@@ -17,9 +17,7 @@ type GrpcTransport struct {
 	timeout time.Duration
 	maxIdle time.Duration
 
-	sock    *net.TCPListener
-	inbound map[*net.TCPConn]bool
-	inMtx   sync.RWMutex
+	sock *net.TCPListener
 
 	pool    map[string]*grpcConn
 	poolMtx sync.RWMutex
@@ -80,8 +78,6 @@ func (g *GrpcTransport) getConn(
 	return client, nil
 }
 
-// Creates a new TCP transport on the given listen address with the
-// configured timeout duration.
 // func NewGrpcTransport(config *Config) (internal.ChordClient, error) {
 func NewGrpcTransport(config *Config) (*GrpcTransport, error) {
 
@@ -92,8 +88,6 @@ func NewGrpcTransport(config *Config) (*GrpcTransport, error) {
 		return nil, err
 	}
 
-	// allocate maps
-	inbound := make(map[*net.TCPConn]bool)
 	pool := make(map[string]*grpcConn)
 
 	// Setup the transport
@@ -101,7 +95,6 @@ func NewGrpcTransport(config *Config) (*GrpcTransport, error) {
 		sock:    listener.(*net.TCPListener),
 		timeout: config.Timeout,
 		maxIdle: config.MaxIdle,
-		inbound: inbound,
 		pool:    pool,
 	}
 
@@ -136,17 +129,15 @@ func (g *GrpcTransport) returnConn(o *grpcConn) {
 func (g *GrpcTransport) Shutdown() {
 	atomic.StoreInt32(&g.shutdown, 1)
 
-	// Close all the inbound connections
-	g.inMtx.RLock()
-	g.server.Stop()
-	g.inMtx.RUnlock()
-
-	// Close all the outbound
+	// Close all the connections
 	g.poolMtx.Lock()
+
+	g.server.Stop()
 	for _, conn := range g.pool {
 		conn.Close()
 	}
 	g.pool = nil
+
 	g.poolMtx.Unlock()
 }
 
