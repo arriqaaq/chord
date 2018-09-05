@@ -4,12 +4,34 @@ import (
 	"errors"
 	"fmt"
 	"github.com/arriqaaq/chord/internal"
+	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"net"
 	"sync"
 	"sync/atomic"
 	"time"
 )
+
+var (
+	er = &internal.ER{}
+)
+
+// Dial wraps grpc's dial function with settings that facilitate the
+// functionality of gmaj.
+func Dial(addr string, opts ...grpc.DialOption) (*grpc.ClientConn, error) {
+	return grpc.Dial(addr, append(append(opts,
+		grpc.WithBlock(),
+		grpc.WithTimeout(5*time.Second),
+		grpc.FailOnNonTempDialError(true)),
+	)...)
+}
+
+// Implements the methods needed for a Chord ring
+type Transport interface {
+	// Find a successor
+	GetSuccessor(*internal.Node) (*internal.Node, error)
+	FindSuccessor(*internal.Node) (*internal.Node, error)
+}
 
 type GrpcTransport struct {
 	config *Config
@@ -168,12 +190,22 @@ func (g *GrpcTransport) listen() {
 	g.server.Serve(g.sock)
 }
 
-// Dial wraps grpc's dial function with settings that facilitate the
-// functionality of gmaj.
-func Dial(addr string, opts ...grpc.DialOption) (*grpc.ClientConn, error) {
-	return grpc.Dial(addr, append(append(opts,
-		grpc.WithBlock(),
-		grpc.WithTimeout(5*time.Second),
-		grpc.FailOnNonTempDialError(true)),
-	)...)
+// GetSuccessor the successor ID of a remote node.
+func (g *GrpcTransport) GetSuccessor(node *internal.Node) (*internal.Node, error) {
+	client, err := g.getConn(node.Addr)
+	if err != nil {
+		return nil, err
+	}
+
+	return client.GetSuccessor(context.Background(), er)
+}
+
+// FindSuccessor the successor ID of a remote node.
+func (g *GrpcTransport) FindSuccessor(node *internal.Node) (*internal.Node, error) {
+	client, err := g.getConn(node.Addr)
+	if err != nil {
+		return nil, err
+	}
+
+	return client.FindSuccessor(context.Background(), &internal.ID{Id: node.Id})
 }

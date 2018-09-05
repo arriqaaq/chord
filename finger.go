@@ -18,14 +18,14 @@ func newFingerTable(node *internal.Node) fingerTable {
 
 // fingerEntry represents a single finger table entry
 type fingerEntry struct {
-	ID   []byte         // ID hash of (n + 2^i) mod (2^m)
+	Id   []byte         // ID hash of (n + 2^i) mod (2^m)
 	Node *internal.Node // RemoteNode that Start points to
 }
 
 // newFingerEntry returns an allocated new finger entry with the attributes set
 func newFingerEntry(id []byte, node *internal.Node) *fingerEntry {
 	return &fingerEntry{
-		ID:   id,
+		Id:   id,
 		Node: node,
 	}
 }
