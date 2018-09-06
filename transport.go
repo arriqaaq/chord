@@ -23,6 +23,7 @@ func Dial(addr string, opts ...grpc.DialOption) (*grpc.ClientConn, error) {
 		grpc.WithBlock(),
 		grpc.WithTimeout(5*time.Second),
 		grpc.FailOnNonTempDialError(true)),
+		grpc.WithInsecure(),
 	)...)
 }
 
@@ -31,6 +32,7 @@ type Transport interface {
 	// Find a successor
 	GetSuccessor(*internal.Node) (*internal.Node, error)
 	FindSuccessor(*internal.Node) (*internal.Node, error)
+	Start()
 }
 
 type GrpcTransport struct {
@@ -82,7 +84,8 @@ func (g *GrpcTransport) getConn(
 		return cc.client, nil
 	}
 
-	conn, err := Dial(addr, g.config.dialOpts...)
+	// conn, err := Dial(addr, g.config.DialOpts...)
+	conn, err := Dial(addr)
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +106,7 @@ func (g *GrpcTransport) getConn(
 // func NewGrpcTransport(config *Config) (internal.ChordClient, error) {
 func NewGrpcTransport(config *Config) (*GrpcTransport, error) {
 
-	addr := config.addr
+	addr := config.Addr
 	// Try to start the listener
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -120,16 +123,20 @@ func NewGrpcTransport(config *Config) (*GrpcTransport, error) {
 		pool:    pool,
 	}
 
-	grp.server = grpc.NewServer(config.serverOpts...)
-
-	// Start RPC server
-	go grp.listen()
-
-	// Reap old connections
-	go grp.reapOld()
+	// grp.server = grpc.NewServer(config.ServerOpts...)
+	grp.server = grpc.NewServer()
 
 	// Done
 	return grp, nil
+}
+
+func (g *GrpcTransport) Start() {
+	// Start RPC server
+	go g.listen()
+
+	// Reap old connections
+	go g.reapOld()
+
 }
 
 // Returns an outbound TCP connection to the pool
@@ -206,6 +213,5 @@ func (g *GrpcTransport) FindSuccessor(node *internal.Node) (*internal.Node, erro
 	if err != nil {
 		return nil, err
 	}
-
 	return client.FindSuccessor(context.Background(), &internal.ID{Id: node.Id})
 }
