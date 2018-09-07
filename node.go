@@ -43,7 +43,7 @@ func NewInode(id []byte, addr string) *internal.Node {
 
 // NewNode creates a Chord node with a pre-defined ID (useful for
 // testing) if a non-nil id is provided.
-func NewNode(cnf *Config, sister *internal.Node) (*Node, error) {
+func NewNode(cnf *Config, joinNode *internal.Node) (*Node, error) {
 	node := &Node{
 		Node:       new(internal.Node),
 		shutdownCh: make(chan struct{}),
@@ -75,26 +75,38 @@ func NewNode(cnf *Config, sister *internal.Node) (*Node, error) {
 
 	node.transport.Start()
 
-	// Join this node to the same chord ring as parent
-	var joinNode *internal.Node
-	// // Ask if our id exists on the ring.
-	if sister != nil {
-		remoteNode, err := node.findSuccessorRPC(sister)
-		if err != nil {
-			return nil, err
-		}
-
-		if idsEqual(remoteNode.Id, node.Id) {
-			return nil, ERR_NODE_EXISTS
-		}
-		joinNode = sister
-	} else {
-		joinNode = node.Node
-	}
-
 	if err := node.join(joinNode); err != nil {
 		return nil, err
 	}
+
+	// thread 2: kick off timer to stabilize periodically
+	go func() {
+		ticker := time.NewTicker(1 * time.Second)
+		for {
+			select {
+			case <-ticker.C:
+				node.stabilize()
+			case <-node.shutdownCh:
+				ticker.Stop()
+				return
+			}
+		}
+	}()
+
+	// thread 3: kick off timer to fix finger table periodically
+	go func() {
+		next := 0
+		ticker := time.NewTicker(1 * time.Second)
+		for {
+			select {
+			case <-ticker.C:
+				next = node.fixNextFinger(next)
+			case <-node.shutdownCh:
+				ticker.Stop()
+				return
+			}
+		}
+	}()
 
 	return node, nil
 }
@@ -124,17 +136,40 @@ type Node struct {
 
 // join allows this node to join an existing ring that a remote node
 // is a part of (i.e., other).
-func (n *Node) join(other *internal.Node) error {
-	succ, err := n.findSuccessorRPC(other)
+func (n *Node) join(joinNode *internal.Node) error {
+	// First check if node already present in the circle
+	// Join this node to the same chord ring as parent
+	var foo *internal.Node
+	// // Ask if our id already exists on the ring.
+	if joinNode != nil {
+		remoteNode, err := n.findSuccessorRPC(joinNode, n.Id)
+		if err != nil {
+			return err
+		}
+
+		if idsEqual(remoteNode.Id, n.Id) {
+			return ERR_NODE_EXISTS
+		}
+		foo = joinNode
+		// fmt.Println("got sister", n.Id, foo.Id)
+	} else {
+		foo = n.Node
+	}
+
+	succ, err := n.findSuccessorRPC(foo, n.Id)
 	if err != nil {
 		return err
 	}
-	fmt.Println("found succ for, ", n.Id, succ.Id)
+	// fmt.Println("found succ for, ", n.Id, succ.Id)
 	n.succMtx.Lock()
 	n.successor = succ
 	n.succMtx.Unlock()
 
 	return nil
+}
+
+func (n *Node) Find(id []byte) (*internal.Node, error) {
+	return n.findSuccessor(id)
 }
 
 /*
@@ -145,9 +180,9 @@ func (n *Node) join(other *internal.Node) error {
 func (n *Node) findSuccessor(id []byte) (*internal.Node, error) {
 	n.succMtx.RLock()
 	defer n.succMtx.RUnlock()
-
 	curr := n.Node
 	succ := n.successor
+
 	if succ == nil {
 		return curr, nil
 	}
@@ -156,9 +191,20 @@ func (n *Node) findSuccessor(id []byte) (*internal.Node, error) {
 		// fmt.Println("1ad", n.Id, id, curr.Id, succ.Id)
 		return succ, nil
 	} else {
+		//9ad [2] id:"\003" addr:"0.0.0.0:8002"  [3]
 		pred := n.closestPrecedingNode(id)
-		succ, err := n.getSuccessorRPC(pred)
-		// fmt.Println("2ad", n.Id, id, pred.Id, succ.Id, betweenRightIncl(id, pred.Id, succ.Id))
+		// fmt.Println("closest node ", n.Id, id, pred.Id)
+		/*
+			NOT SURE ABOUT THIS, RECHECK from paper!!!
+			if preceeding node and current node are the same,
+			store the key on this node
+		*/
+		if isEqual(pred.Id, n.Id) {
+			return curr, nil
+		}
+
+		succ, err := n.findSuccessorRPC(pred, id)
+		// fmt.Println("successor to closest node ", succ, err)
 		if err != nil {
 			return nil, err
 		}
@@ -166,7 +212,6 @@ func (n *Node) findSuccessor(id []byte) (*internal.Node, error) {
 			// not able to wrap around, current node is the successor
 			return curr, nil
 		}
-		return succ, nil
 
 	}
 	return nil, nil
@@ -198,8 +243,18 @@ func (n *Node) getSuccessorRPC(node *internal.Node) (*internal.Node, error) {
 }
 
 // findSuccessorRPC finds the successor node of a given ID in the entire ring.
-func (n *Node) findSuccessorRPC(node *internal.Node) (*internal.Node, error) {
-	return n.transport.FindSuccessor(node)
+func (n *Node) findSuccessorRPC(node *internal.Node, id []byte) (*internal.Node, error) {
+	return n.transport.FindSuccessor(node, id)
+}
+
+// getSuccessorRPC the successor ID of a remote node.
+func (n *Node) getPredecessorRPC(node *internal.Node) (*internal.Node, error) {
+	return n.transport.GetPredecessor(node)
+}
+
+// notifyRPC notifies a remote node that pred is its predecessor.
+func (n *Node) notifyRPC(node, pred *internal.Node) error {
+	return n.transport.Notify(node, pred)
 }
 
 /*
@@ -211,12 +266,15 @@ func (n *Node) GetSuccessor(ctx context.Context, r *internal.ER) (*internal.Node
 	n.succMtx.RLock()
 	succ := n.successor
 	n.succMtx.RUnlock()
+	if succ == nil {
+		return emptyNode, nil
+	}
 
 	return succ, nil
 }
 
-func (n *Node) FindSuccessor(ctx context.Context, node *internal.ID) (*internal.Node, error) {
-	succ, err := n.findSuccessor(node.Id)
+func (n *Node) FindSuccessor(ctx context.Context, id *internal.ID) (*internal.Node, error) {
+	succ, err := n.findSuccessor(id.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -236,10 +294,47 @@ func (n *Node) ClosestPrecedingFinger(ctx context.Context, node *internal.ID) (*
 
 //TODO
 func (n *Node) GetPredecessor(ctx context.Context, r *internal.ER) (*internal.Node, error) {
-	return nil, nil
+	n.predMtx.RLock()
+	pred := n.predecessor
+	n.predMtx.RUnlock()
+	if pred == nil {
+		return emptyNode, nil
+	}
+	return pred, nil
 }
 
 //TODO
 func (n *Node) Notify(ctx context.Context, node *internal.Node) (*internal.ER, error) {
-	return nil, nil
+	n.predMtx.Lock()
+	defer n.predMtx.Unlock()
+	pred := n.predecessor
+	if pred == nil || between(node.Id, pred.Id, n.Id) {
+		// fmt.Println("setting predecessor", n.Id, node.Id)
+		n.predecessor = node
+	}
+	return emptyRequest, nil
+}
+
+func (n *Node) stabilize() {
+	// fmt.Println("stabilize: ", n.Id, n.successor, n.predecessor)
+	n.succMtx.RLock()
+	succ := n.successor
+	if succ == nil {
+		n.succMtx.RUnlock()
+		return
+	}
+	n.succMtx.RUnlock()
+
+	x, err := n.getPredecessorRPC(succ)
+	if err != nil || x == nil {
+		fmt.Println("error getting predecessor, ", err, x)
+		return
+	}
+	if x.Id != nil && between(x.Id, n.Id, succ.Id) {
+		n.succMtx.Lock()
+		n.successor = x
+		n.succMtx.Unlock()
+		// fmt.Println("setting successor ", n.Id, x.Id)
+	}
+	n.notifyRPC(succ, n.Node)
 }

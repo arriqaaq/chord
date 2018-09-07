@@ -13,11 +13,12 @@ import (
 )
 
 var (
-	er = &internal.ER{}
+	emptyNode    = &internal.Node{}
+	emptyRequest = &internal.ER{}
 )
 
 // Dial wraps grpc's dial function with settings that facilitate the
-// functionality of gmaj.
+// functionality of transport.
 func Dial(addr string, opts ...grpc.DialOption) (*grpc.ClientConn, error) {
 	return grpc.Dial(addr, append(append(opts,
 		grpc.WithBlock(),
@@ -30,9 +31,11 @@ func Dial(addr string, opts ...grpc.DialOption) (*grpc.ClientConn, error) {
 // Implements the methods needed for a Chord ring
 type Transport interface {
 	// Find a successor
-	GetSuccessor(*internal.Node) (*internal.Node, error)
-	FindSuccessor(*internal.Node) (*internal.Node, error)
 	Start()
+	GetSuccessor(*internal.Node) (*internal.Node, error)
+	FindSuccessor(*internal.Node, []byte) (*internal.Node, error)
+	GetPredecessor(*internal.Node) (*internal.Node, error)
+	Notify(*internal.Node, *internal.Node) error
 }
 
 type GrpcTransport struct {
@@ -203,15 +206,43 @@ func (g *GrpcTransport) GetSuccessor(node *internal.Node) (*internal.Node, error
 	if err != nil {
 		return nil, err
 	}
-
-	return client.GetSuccessor(context.Background(), er)
+	ctx, cancel := context.WithTimeout(context.Background(), g.timeout)
+	defer cancel()
+	return client.GetSuccessor(ctx, emptyRequest)
 }
 
 // FindSuccessor the successor ID of a remote node.
-func (g *GrpcTransport) FindSuccessor(node *internal.Node) (*internal.Node, error) {
+func (g *GrpcTransport) FindSuccessor(node *internal.Node, id []byte) (*internal.Node, error) {
+	// fmt.Println("yo", node.Id, id)
 	client, err := g.getConn(node.Addr)
 	if err != nil {
 		return nil, err
 	}
-	return client.FindSuccessor(context.Background(), &internal.ID{Id: node.Id})
+	ctx, cancel := context.WithTimeout(context.Background(), g.timeout)
+	defer cancel()
+	return client.FindSuccessor(ctx, &internal.ID{Id: id})
+}
+
+// GetPredecessor the successor ID of a remote node.
+func (g *GrpcTransport) GetPredecessor(node *internal.Node) (*internal.Node, error) {
+	client, err := g.getConn(node.Addr)
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), g.timeout)
+	defer cancel()
+	return client.GetPredecessor(ctx, emptyRequest)
+}
+
+func (g *GrpcTransport) Notify(node, pred *internal.Node) error {
+	client, err := g.getConn(node.Addr)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), g.timeout)
+	defer cancel()
+
+	_, err = client.Notify(ctx, pred)
+	return err
+
 }

@@ -14,6 +14,10 @@ var (
 	ERR_NODE_EXISTS  = errors.New("node with id already exists")
 )
 
+func isEqual(a, b []byte) bool {
+	return bytes.Compare(a, b) == 0
+}
+
 func randStabilize(min, max time.Duration) time.Duration {
 	r := rand.Float64()
 	return time.Duration((r * float64(max-min)) + float64(min))

@@ -1,6 +1,7 @@
 package chord
 
 import (
+	"fmt"
 	"github.com/arriqaaq/chord/internal"
 	"math/big"
 )
@@ -43,4 +44,27 @@ func fingerMath(n []byte, i int, m int) []byte {
 
 	// return padID(res.Bytes())
 	return res.Bytes()
+}
+
+// fixNextFinger runs periodically (in a seperate go routine)
+// to fix entries in our finger table.
+func (n *Node) fixNextFinger(next int) int {
+	nextHash := fingerMath(n.Id, next, 8)
+	succ, err := n.findSuccessor(nextHash)
+	if err != nil || succ == nil {
+		fmt.Println("finger lookup failed", n.Id, nextHash)
+		// TODO: handle failed client here
+		// return next
+		return (next + 1) % 8
+	}
+
+	finger := newFingerEntry(nextHash, succ)
+	n.ftMtx.Lock()
+	n.fingerTable[next] = finger
+	// for _, v := range n.fingerTable {
+	// 	fmt.Println("finger data ", n.Id, v.Id, v.Node.Id)
+	// }
+	n.ftMtx.Unlock()
+
+	return (next + 1) % 8
 }
