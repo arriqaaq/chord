@@ -263,25 +263,36 @@ func (n *Node) delete(key string) error {
 }
 
 func (n *Node) transferKeys() {
-	keys, err := n.requestKeys()
+	n.succMtx.RLock()
+	succ := n.successor
+	n.succMtx.RUnlock()
+
+	keys, err := n.requestKeys(succ)
 	if len(keys) > 0 {
 		fmt.Println("transfering: ", keys, err)
 	}
+	delKeyList := make([]string, 0, 10)
 	// store the keys in current node
 	for _, item := range keys {
 		if item == nil {
 			continue
 		}
 		n.storage.Set(item.Key, item.Value)
+		delKeyList = append(delKeyList, item.Key)
 	}
 	// delete the keys from the other node
+	if len(delKeyList) > 0 {
+		n.deleteKeys(succ, delKeyList)
+	}
+
+}
+
+func (n *Node) deleteKeys(node *internal.Node, keys []string) error {
+	return n.deleteKeysRPC(node, keys)
 }
 
 // When a new node joins, it requests keys from it's successor
-func (n *Node) requestKeys() ([]*internal.KV, error) {
-	n.succMtx.RLock()
-	succ := n.successor
-	n.succMtx.RUnlock()
+func (n *Node) requestKeys(succ *internal.Node) ([]*internal.KV, error) {
 
 	/*
 		Get successor's predecessor, as current node is new
@@ -472,6 +483,12 @@ func (n *Node) requestKeysRPC(
 	node *internal.Node, from []byte, to []byte,
 ) ([]*internal.KV, error) {
 	return n.transport.RequestKeys(node, from, to)
+}
+
+func (n *Node) deleteKeysRPC(
+	node *internal.Node, keys []string,
+) error {
+	return n.transport.DeleteKeys(node, keys)
 }
 
 /*
