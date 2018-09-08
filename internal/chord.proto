@@ -2,19 +2,6 @@ syntax = "proto3";
 
 package internal;
 
-// Node contains a node ID and address.
-message Node {
-    bytes id = 1;
-    string addr = 2;
-}
-
-message ER {}
-
-message ID {
-    bytes id = 1;
-}
-
-
 // Chord is the service for inter-node communication.
 // This has all the RPC functions needed to maintain
 // a Chord cluster.
@@ -31,4 +18,71 @@ service Chord {
     rpc FindSuccessor(ID) returns (Node);
     // CheckPredecessor checkes whether predecessor has failed.
     rpc CheckPredecessor(ID) returns (ER);
+
+    // Get returns the value in Chord ring for the given key.
+    rpc XGet(GetRequest) returns (GetResponse);
+    // Set writes a key value pair to the Chord ring.
+    rpc XSet(SetRequest) returns (SetResponse);
+    // Delete returns the value in Chord ring for the given key.
+    rpc XDelete(DeleteRequest) returns (DeleteResponse);
+    // Multiple delete returns the value in Chord ring between the given keys.
+    rpc XMultiDelete(MultiDeleteRequest) returns (DeleteResponse);
+    // RequestKeys returns the keys between given range from the Chord ring.
+    rpc XRequestKeys(RequestKeysRequest) returns (RequestKeysResponse);
+
+}
+
+
+// Node contains a node ID and address.
+message Node {
+    bytes id = 1;
+    string addr = 2;
+}
+
+message ER {}
+
+message ID {
+    bytes id = 1;
+}
+
+
+message GetRequest {
+    string key = 1;
+}
+
+message GetResponse {
+    bytes value = 1;
+}
+
+message SetRequest {
+    string key = 1;
+    string value = 2;
+}
+
+message SetResponse {}
+
+
+message DeleteRequest {
+    string key = 1;
+}
+
+message DeleteResponse {
+}
+
+message MultiDeleteRequest {
+    repeated string keys = 1;
+}
+
+message RequestKeysRequest {
+    bytes from = 1;
+    bytes to = 2;
+}
+
+message KV {
+    string key = 1;
+    string value = 2;
+}
+
+message RequestKeysResponse {
+    repeated KV values = 1;
 }

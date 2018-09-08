@@ -13,8 +13,12 @@ import (
 )
 
 var (
-	emptyNode    = &internal.Node{}
-	emptyRequest = &internal.ER{}
+	emptyNode                = &internal.Node{}
+	emptyRequest             = &internal.ER{}
+	emptyGetResponse         = &internal.GetResponse{}
+	emptySetResponse         = &internal.SetResponse{}
+	emptyDeleteResponse      = &internal.DeleteResponse{}
+	emptyRequestKeysResponse = &internal.RequestKeysResponse{}
 )
 
 func Dial(addr string, opts ...grpc.DialOption) (*grpc.ClientConn, error) {
@@ -32,6 +36,12 @@ type Transport interface {
 	GetPredecessor(*internal.Node) (*internal.Node, error)
 	Notify(*internal.Node, *internal.Node) error
 	CheckPredecessor(*internal.Node) error
+
+	//Storage
+	GetKey(*internal.Node, string) (*internal.GetResponse, error)
+	SetKey(*internal.Node, string, string) error
+	DeleteKey(*internal.Node, string) error
+	RequestKeys(*internal.Node, []byte, []byte) ([]*internal.KV, error)
 }
 
 type GrpcTransport struct {
@@ -86,6 +96,10 @@ type grpcConn struct {
 
 func (g *grpcConn) Close() {
 	g.conn.Close()
+}
+
+func (g *GrpcTransport) registerNode(node *Node) {
+	internal.RegisterChordServer(g.server, node)
 }
 
 func (g *GrpcTransport) GetServer() *grpc.Server {
@@ -203,6 +217,7 @@ func (g *GrpcTransport) GetSuccessor(node *internal.Node) (*internal.Node, error
 	if err != nil {
 		return nil, err
 	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), g.timeout)
 	defer cancel()
 	return client.GetSuccessor(ctx, emptyRequest)
@@ -215,6 +230,7 @@ func (g *GrpcTransport) FindSuccessor(node *internal.Node, id []byte) (*internal
 	if err != nil {
 		return nil, err
 	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), g.timeout)
 	defer cancel()
 	return client.FindSuccessor(ctx, &internal.ID{Id: id})
@@ -226,6 +242,7 @@ func (g *GrpcTransport) GetPredecessor(node *internal.Node) (*internal.Node, err
 	if err != nil {
 		return nil, err
 	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), g.timeout)
 	defer cancel()
 	return client.GetPredecessor(ctx, emptyRequest)
@@ -236,6 +253,7 @@ func (g *GrpcTransport) Notify(node, pred *internal.Node) error {
 	if err != nil {
 		return err
 	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), g.timeout)
 	defer cancel()
 	_, err = client.Notify(ctx, pred)
@@ -248,8 +266,60 @@ func (g *GrpcTransport) CheckPredecessor(node *internal.Node) error {
 	if err != nil {
 		return err
 	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), g.timeout)
 	defer cancel()
 	_, err = client.CheckPredecessor(ctx, &internal.ID{Id: node.Id})
 	return err
+}
+
+func (g *GrpcTransport) GetKey(node *internal.Node, key string) (*internal.GetResponse, error) {
+	client, err := g.getConn(node.Addr)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), g.timeout)
+	defer cancel()
+	return client.XGet(ctx, &internal.GetRequest{Key: key})
+}
+
+func (g *GrpcTransport) SetKey(node *internal.Node, key, value string) error {
+	client, err := g.getConn(node.Addr)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), g.timeout)
+	defer cancel()
+	_, err = client.XSet(ctx, &internal.SetRequest{Key: key, Value: value})
+	return err
+}
+
+func (g *GrpcTransport) DeleteKey(node *internal.Node, key string) error {
+	client, err := g.getConn(node.Addr)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), g.timeout)
+	defer cancel()
+	_, err = client.XDelete(ctx, &internal.DeleteRequest{Key: key})
+	return err
+}
+func (g *GrpcTransport) RequestKeys(node *internal.Node, from, to []byte) ([]*internal.KV, error) {
+	client, err := g.getConn(node.Addr)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), g.timeout)
+	defer cancel()
+	val, err := client.XRequestKeys(
+		ctx, &internal.RequestKeysRequest{From: from, To: to},
+	)
+	if err != nil {
+		return nil, err
+	}
+	return val.Values, nil
 }

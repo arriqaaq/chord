@@ -43,9 +43,7 @@ func main() {
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
-	t := big.NewInt(0)
-	t.SetString("4", 10)
-	x, y = h.Find(t.Bytes())
+	x, y = h.Find("4")
 	log.Println("found-------->", x, y)
 	<-c
 }

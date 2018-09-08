@@ -196,11 +196,106 @@ func (n *Node) join(joinNode *internal.Node) error {
 	n.successor = succ
 	n.succMtx.Unlock()
 
+	// // request keys from parent node
+	// n.transferKeys()
+
 	return nil
 }
 
-func (n *Node) Find(id []byte) (*internal.Node, error) {
+/*
+	Public storage implementation
+*/
+
+func (n *Node) Find(key string) (*internal.Node, error) {
+	return n.locate(key)
+}
+
+func (n *Node) Get(key string) ([]byte, error) {
+	return n.get(key)
+}
+func (n *Node) Set(key, value string) error {
+	return n.set(key, value)
+}
+func (n *Node) Delete(key string) error {
+	return n.delete(key)
+}
+
+/*
+	Finds the node for the key
+*/
+func (n *Node) locate(key string) (*internal.Node, error) {
+	id, err := n.hashKey(key)
+	if err != nil {
+		return nil, err
+	}
 	return n.findSuccessor(id)
+}
+
+func (n *Node) get(key string) ([]byte, error) {
+	node, err := n.locate(key)
+	if err != nil {
+		return nil, err
+	}
+	val, err := n.getKeyRPC(node, key)
+	if err != nil {
+		return nil, err
+	}
+	return val.Value, nil
+}
+
+func (n *Node) set(key, value string) error {
+	node, err := n.locate(key)
+	if err != nil {
+		return err
+	}
+	err = n.setKeyRPC(node, key, value)
+	return err
+}
+
+func (n *Node) delete(key string) error {
+	node, err := n.locate(key)
+	if err != nil {
+		return err
+	}
+	err = n.deleteKeyRPC(node, key)
+	return err
+}
+
+func (n *Node) transferKeys() {
+	keys, err := n.requestKeys()
+	fmt.Println("transfering: ", keys, err)
+	// store the keys in current node
+	for _, item := range keys {
+		if item == nil {
+			continue
+		}
+		n.storage.Set(item.Key, item.Value)
+	}
+	// delete the keys from the other node
+}
+
+// When a new node joins, it requests keys from it's successor
+func (n *Node) requestKeys() ([]*internal.KV, error) {
+	n.succMtx.RLock()
+	succ := n.successor
+	n.succMtx.RUnlock()
+
+	/*
+		Get successor's predecessor, as current node is new
+		and predecessor is initally nil
+	*/
+	pred, err := n.getPredecessorRPC(succ)
+	if err != nil {
+		return nil, err
+	}
+
+	if isEqual(n.Id, pred.Id) {
+		return nil, nil
+	}
+
+	return n.requestKeysRPC(
+		succ, pred.Id, n.Id,
+	)
 }
 
 /*
@@ -360,6 +455,22 @@ func (n *Node) notifyRPC(node, pred *internal.Node) error {
 	return n.transport.Notify(node, pred)
 }
 
+func (n *Node) getKeyRPC(node *internal.Node, key string) (*internal.GetResponse, error) {
+	return n.transport.GetKey(node, key)
+}
+func (n *Node) setKeyRPC(node *internal.Node, key, value string) error {
+	return n.transport.SetKey(node, key, value)
+}
+func (n *Node) deleteKeyRPC(node *internal.Node, key string) error {
+	return n.transport.DeleteKey(node, key)
+}
+
+func (n *Node) requestKeysRPC(
+	node *internal.Node, from []byte, to []byte,
+) ([]*internal.KV, error) {
+	return n.transport.RequestKeys(node, from, to)
+}
+
 /*
 	RPC interface implementation
 */
@@ -413,4 +524,45 @@ func (n *Node) Notify(ctx context.Context, node *internal.Node) (*internal.ER, e
 		n.predecessor = node
 	}
 	return emptyRequest, nil
+}
+
+func (n *Node) XGet(ctx context.Context, req *internal.GetRequest) (*internal.GetResponse, error) {
+	n.stMtx.RLock()
+	defer n.stMtx.RUnlock()
+	val, err := n.storage.Get(req.Key)
+	if err != nil {
+		return emptyGetResponse, err
+	}
+	return &internal.GetResponse{Value: val}, nil
+}
+
+func (n *Node) XSet(ctx context.Context, req *internal.SetRequest) (*internal.SetResponse, error) {
+	n.stMtx.Lock()
+	defer n.stMtx.Unlock()
+	err := n.storage.Set(req.Key, req.Value)
+	return emptySetResponse, err
+}
+
+func (n *Node) XDelete(ctx context.Context, req *internal.DeleteRequest) (*internal.DeleteResponse, error) {
+	n.stMtx.Lock()
+	defer n.stMtx.Unlock()
+	err := n.storage.Delete(req.Key)
+	return emptyDeleteResponse, err
+}
+
+func (n *Node) XRequestKeys(ctx context.Context, req *internal.RequestKeysRequest) (*internal.RequestKeysResponse, error) {
+	n.stMtx.RLock()
+	defer n.stMtx.RUnlock()
+	val, err := n.storage.Between(req.From, req.To)
+	if err != nil {
+		return emptyRequestKeysResponse, err
+	}
+	return &internal.RequestKeysResponse{Values: val}, nil
+}
+
+func (n *Node) XMultiDelete(ctx context.Context, req *internal.MultiDeleteRequest) (*internal.DeleteResponse, error) {
+	n.stMtx.Lock()
+	defer n.stMtx.Unlock()
+	err := n.storage.MDelete(req.Keys...)
+	return emptyDeleteResponse, err
 }
