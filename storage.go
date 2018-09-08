@@ -13,6 +13,13 @@ type Storage interface {
 	MDelete(...string) error
 }
 
+func NewArrayStore(hashFunc hash.Hash) Storage {
+	return &arrayStore{
+		data: make(map[string]string),
+		Hash: hashFunc,
+	}
+}
+
 type arrayStore struct {
 	data map[string]string
 	Hash hash.Hash // Hash function to use
@@ -47,7 +54,7 @@ func (a *arrayStore) Delete(key string) error {
 	return nil
 }
 
-func (a *arrayStore) Between(from, to []byte) ([]*internal.KV, error) {
+func (a *arrayStore) Between(from []byte, to []byte) ([]*internal.KV, error) {
 	vals := make([]*internal.KV, 0, 10)
 	for k, v := range a.data {
 		hashedKey, err := a.hashKey(k)

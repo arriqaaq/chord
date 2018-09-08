@@ -63,6 +63,7 @@ func NewNode(cnf *Config, joinNode *internal.Node) (*Node, error) {
 		Node:       new(internal.Node),
 		shutdownCh: make(chan struct{}),
 		cnf:        cnf,
+		storage:    NewArrayStore(cnf.Hash),
 	}
 
 	if cnf.Id != nil {
@@ -196,8 +197,8 @@ func (n *Node) join(joinNode *internal.Node) error {
 	n.successor = succ
 	n.succMtx.Unlock()
 
-	// // request keys from parent node
-	// n.transferKeys()
+	// request keys from parent node
+	n.transferKeys()
 
 	return nil
 }
@@ -263,7 +264,9 @@ func (n *Node) delete(key string) error {
 
 func (n *Node) transferKeys() {
 	keys, err := n.requestKeys()
-	fmt.Println("transfering: ", keys, err)
+	if len(keys) > 0 {
+		fmt.Println("transfering: ", keys, err)
+	}
 	// store the keys in current node
 	for _, item := range keys {
 		if item == nil {
