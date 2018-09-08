@@ -79,9 +79,9 @@ func NewNode(cnf *Config, joinNode *internal.Node) (*Node, error) {
 		return nil, err
 	}
 
-	// thread 2: kick off timer to stabilize periodically
+	// thread 1: kick off timer to stabilize periodically
 	go func() {
-		ticker := time.NewTicker(1 * time.Second)
+		ticker := time.NewTicker(3 * time.Second)
 		for {
 			select {
 			case <-ticker.C:
@@ -93,14 +93,29 @@ func NewNode(cnf *Config, joinNode *internal.Node) (*Node, error) {
 		}
 	}()
 
-	// thread 3: kick off timer to fix finger table periodically
+	// thread 2: kick off timer to fix finger table periodically
 	go func() {
 		next := 0
-		ticker := time.NewTicker(1 * time.Second)
+		ticker := time.NewTicker(5 * time.Second)
 		for {
 			select {
 			case <-ticker.C:
 				next = node.fixNextFinger(next)
+			case <-node.shutdownCh:
+				ticker.Stop()
+				return
+			}
+		}
+	}()
+
+	// thread 3: CheckPredecessor checkes whether predecessor has failed.
+
+	go func() {
+		ticker := time.NewTicker(10 * time.Second)
+		for {
+			select {
+			case <-ticker.C:
+				node.checkPredecessor()
 			case <-node.shutdownCh:
 				ticker.Stop()
 				return
@@ -337,4 +352,14 @@ func (n *Node) stabilize() {
 		// fmt.Println("setting successor ", n.Id, x.Id)
 	}
 	n.notifyRPC(succ, n.Node)
+}
+
+func (n *Node) checkPredecessor() {
+	x, err := n.getPredecessorRPC(n.Node)
+	if err != nil || x == nil {
+		fmt.Println("predecessor failed!")
+		n.predMtx.Lock()
+		n.predecessor = nil
+		n.predMtx.Unlock()
+	}
 }

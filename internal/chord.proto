@@ -20,16 +20,15 @@ message ID {
 // a Chord cluster.
 service Chord {
     // GetPredecessor returns the node believed to be the current predecessor.
-    rpc GetPredecessor(ER) returns (Node) {}
+    rpc GetPredecessor(ER) returns (Node);
     // GetSuccessor returns the node believed to be the current successor.
-    rpc GetSuccessor(ER) returns (Node) {}
+    rpc GetSuccessor(ER) returns (Node);
     // Notify notifies Chord that Node thinks it is our predecessor. This has
     // the potential to initiate the transferring of keys.
-    rpc Notify(Node) returns (ER) {}
-    // ClosestPrecedingFinger returns the entry of the finger table that
-    // precedes ID but is closest to it.
-    rpc ClosestPrecedingFinger(ID) returns (Node);
+    rpc Notify(Node) returns (ER);
     // FindSuccessor finds the node the succedes ID. May initiate RPC calls to
     // other nodes.
     rpc FindSuccessor(ID) returns (Node);
+    // CheckPredecessor checkes whether predecessor has failed.
+    rpc CheckPredecessor(ID) returns (ER);
 }

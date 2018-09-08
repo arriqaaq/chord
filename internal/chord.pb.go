@@ -36,7 +36,7 @@ func (m *Node) Reset()         { *m = Node{} }
 func (m *Node) String() string { return proto.CompactTextString(m) }
 func (*Node) ProtoMessage()    {}
 func (*Node) Descriptor() ([]byte, []int) {
-	return fileDescriptor_chord_e254d6b4f2942c37, []int{0}
+	return fileDescriptor_chord_b157dabe6a21f15c, []int{0}
 }
 func (m *Node) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Node.Unmarshal(m, b)
@@ -80,7 +80,7 @@ func (m *ER) Reset()         { *m = ER{} }
 func (m *ER) String() string { return proto.CompactTextString(m) }
 func (*ER) ProtoMessage()    {}
 func (*ER) Descriptor() ([]byte, []int) {
-	return fileDescriptor_chord_e254d6b4f2942c37, []int{1}
+	return fileDescriptor_chord_b157dabe6a21f15c, []int{1}
 }
 func (m *ER) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_ER.Unmarshal(m, b)
@@ -111,7 +111,7 @@ func (m *ID) Reset()         { *m = ID{} }
 func (m *ID) String() string { return proto.CompactTextString(m) }
 func (*ID) ProtoMessage()    {}
 func (*ID) Descriptor() ([]byte, []int) {
-	return fileDescriptor_chord_e254d6b4f2942c37, []int{2}
+	return fileDescriptor_chord_b157dabe6a21f15c, []int{2}
 }
 func (m *ID) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_ID.Unmarshal(m, b)
@@ -162,12 +162,11 @@ type ChordClient interface {
 	// Notify notifies Chord that Node thinks it is our predecessor. This has
 	// the potential to initiate the transferring of keys.
 	Notify(ctx context.Context, in *Node, opts ...grpc.CallOption) (*ER, error)
-	// ClosestPrecedingFinger returns the entry of the finger table that
-	// precedes ID but is closest to it.
-	ClosestPrecedingFinger(ctx context.Context, in *ID, opts ...grpc.CallOption) (*Node, error)
 	// FindSuccessor finds the node the succedes ID. May initiate RPC calls to
 	// other nodes.
 	FindSuccessor(ctx context.Context, in *ID, opts ...grpc.CallOption) (*Node, error)
+	// CheckPredecessor checkes whether predecessor has failed.
+	CheckPredecessor(ctx context.Context, in *ID, opts ...grpc.CallOption) (*ER, error)
 }
 
 type chordClient struct {
@@ -205,18 +204,18 @@ func (c *chordClient) Notify(ctx context.Context, in *Node, opts ...grpc.CallOpt
 	return out, nil
 }
 
-func (c *chordClient) ClosestPrecedingFinger(ctx context.Context, in *ID, opts ...grpc.CallOption) (*Node, error) {
+func (c *chordClient) FindSuccessor(ctx context.Context, in *ID, opts ...grpc.CallOption) (*Node, error) {
 	out := new(Node)
-	err := grpc.Invoke(ctx, "/internal.Chord/ClosestPrecedingFinger", in, out, c.cc, opts...)
+	err := grpc.Invoke(ctx, "/internal.Chord/FindSuccessor", in, out, c.cc, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *chordClient) FindSuccessor(ctx context.Context, in *ID, opts ...grpc.CallOption) (*Node, error) {
-	out := new(Node)
-	err := grpc.Invoke(ctx, "/internal.Chord/FindSuccessor", in, out, c.cc, opts...)
+func (c *chordClient) CheckPredecessor(ctx context.Context, in *ID, opts ...grpc.CallOption) (*ER, error) {
+	out := new(ER)
+	err := grpc.Invoke(ctx, "/internal.Chord/CheckPredecessor", in, out, c.cc, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -233,12 +232,11 @@ type ChordServer interface {
 	// Notify notifies Chord that Node thinks it is our predecessor. This has
 	// the potential to initiate the transferring of keys.
 	Notify(context.Context, *Node) (*ER, error)
-	// ClosestPrecedingFinger returns the entry of the finger table that
-	// precedes ID but is closest to it.
-	ClosestPrecedingFinger(context.Context, *ID) (*Node, error)
 	// FindSuccessor finds the node the succedes ID. May initiate RPC calls to
 	// other nodes.
 	FindSuccessor(context.Context, *ID) (*Node, error)
+	// CheckPredecessor checkes whether predecessor has failed.
+	CheckPredecessor(context.Context, *ID) (*ER, error)
 }
 
 func RegisterChordServer(s *grpc.Server, srv ChordServer) {
@@ -299,24 +297,6 @@ func _Chord_Notify_Handler(srv interface{}, ctx context.Context, dec func(interf
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Chord_ClosestPrecedingFinger_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ID)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(ChordServer).ClosestPrecedingFinger(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/internal.Chord/ClosestPrecedingFinger",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ChordServer).ClosestPrecedingFinger(ctx, req.(*ID))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _Chord_FindSuccessor_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ID)
 	if err := dec(in); err != nil {
@@ -331,6 +311,24 @@ func _Chord_FindSuccessor_Handler(srv interface{}, ctx context.Context, dec func
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ChordServer).FindSuccessor(ctx, req.(*ID))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Chord_CheckPredecessor_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ID)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ChordServer).CheckPredecessor(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/internal.Chord/CheckPredecessor",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ChordServer).CheckPredecessor(ctx, req.(*ID))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -352,34 +350,33 @@ var _Chord_serviceDesc = grpc.ServiceDesc{
 			Handler:    _Chord_Notify_Handler,
 		},
 		{
-			MethodName: "ClosestPrecedingFinger",
-			Handler:    _Chord_ClosestPrecedingFinger_Handler,
-		},
-		{
 			MethodName: "FindSuccessor",
 			Handler:    _Chord_FindSuccessor_Handler,
+		},
+		{
+			MethodName: "CheckPredecessor",
+			Handler:    _Chord_CheckPredecessor_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
 	Metadata: "chord.proto",
 }
 
-func init() { proto.RegisterFile("chord.proto", fileDescriptor_chord_e254d6b4f2942c37) }
+func init() { proto.RegisterFile("chord.proto", fileDescriptor_chord_b157dabe6a21f15c) }
 
-var fileDescriptor_chord_e254d6b4f2942c37 = []byte{
-	// 221 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x8c, 0x90, 0xcf, 0x4a, 0xc4, 0x30,
-	0x10, 0xc6, 0x37, 0xa1, 0x2e, 0x3a, 0xd6, 0x1e, 0x06, 0x91, 0x65, 0x4f, 0x4b, 0x4e, 0x45, 0x30,
-	0x88, 0x82, 0x2f, 0xb0, 0xff, 0xd8, 0xcb, 0x22, 0xf1, 0x09, 0x6a, 0x66, 0xac, 0x81, 0x92, 0x48,
-	0x12, 0x0f, 0xbe, 0xba, 0x27, 0x69, 0x41, 0xa4, 0xd5, 0x83, 0xb7, 0x19, 0xe6, 0x37, 0xfc, 0x3e,
-	0x3e, 0x38, 0xb7, 0xaf, 0x21, 0x92, 0x7e, 0x8b, 0x21, 0x07, 0x3c, 0x75, 0x3e, 0x73, 0xf4, 0x4d,
-	0xa7, 0xae, 0xa1, 0x38, 0x06, 0x62, 0xac, 0x40, 0x3a, 0x5a, 0x88, 0x95, 0xa8, 0x4b, 0x23, 0x1d,
-	0x21, 0x42, 0xd1, 0x10, 0xc5, 0x85, 0x5c, 0x89, 0xfa, 0xcc, 0x0c, 0xb3, 0x2a, 0x40, 0x6e, 0x8d,
-	0xba, 0x04, 0x79, 0xd8, 0x4c, 0xf9, 0xbb, 0x4f, 0x01, 0x27, 0xeb, 0xde, 0x80, 0xb7, 0x50, 0xed,
-	0x39, 0x3f, 0x46, 0x26, 0xb6, 0x9c, 0x52, 0x88, 0x58, 0xea, 0x6f, 0x9d, 0xde, 0x9a, 0x65, 0xf5,
-	0xb3, 0xf5, 0x66, 0x35, 0x43, 0x0d, 0xe5, 0x9e, 0xf3, 0xd3, 0xbb, 0xfd, 0x27, 0x5f, 0xc3, 0xfc,
-	0x18, 0xb2, 0x7b, 0xf9, 0xc0, 0xc9, 0x6d, 0x39, 0xfa, 0x54, 0x33, 0x7c, 0x80, 0xab, 0x75, 0x17,
-	0x12, 0xa7, 0x3e, 0x8f, 0x65, 0x72, 0xbe, 0xdd, 0x39, 0xdf, 0xf2, 0xc8, 0x71, 0xd8, 0x4c, 0x1d,
-	0x78, 0x03, 0x17, 0x3b, 0xe7, 0xe9, 0xcf, 0x48, 0xbf, 0xf1, 0xe7, 0xf9, 0xd0, 0xea, 0xfd, 0x57,
-	0x00, 0x00, 0x00, 0xff, 0xff, 0xf2, 0xe9, 0xc8, 0xa5, 0x64, 0x01, 0x00, 0x00,
+var fileDescriptor_chord_b157dabe6a21f15c = []byte{
+	// 203 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe2, 0xe2, 0x4e, 0xce, 0xc8, 0x2f,
+	0x4a, 0xd1, 0x2b, 0x28, 0xca, 0x2f, 0xc9, 0x17, 0xe2, 0xc8, 0xcc, 0x2b, 0x49, 0x2d, 0xca, 0x4b,
+	0xcc, 0x51, 0xd2, 0xe2, 0x62, 0xf1, 0xcb, 0x4f, 0x49, 0x15, 0xe2, 0xe3, 0x62, 0xca, 0x4c, 0x91,
+	0x60, 0x54, 0x60, 0xd4, 0xe0, 0x09, 0x62, 0xca, 0x4c, 0x11, 0x12, 0xe2, 0x62, 0x49, 0x4c, 0x49,
+	0x29, 0x92, 0x60, 0x52, 0x60, 0xd4, 0xe0, 0x0c, 0x02, 0xb3, 0x95, 0x58, 0xb8, 0x98, 0x5c, 0x83,
+	0x94, 0x44, 0xb8, 0x98, 0x3c, 0x5d, 0xd0, 0xd5, 0x1b, 0xbd, 0x61, 0xe4, 0x62, 0x75, 0x06, 0xd9,
+	0x20, 0xa4, 0xc7, 0xc5, 0xe7, 0x9e, 0x5a, 0x12, 0x50, 0x94, 0x9a, 0x92, 0x9a, 0x9c, 0x5a, 0x5c,
+	0x9c, 0x5f, 0x24, 0xc4, 0xa3, 0x07, 0xb3, 0x4e, 0xcf, 0x35, 0x48, 0x8a, 0x0f, 0xc1, 0x03, 0xdb,
+	0xac, 0xc3, 0xc5, 0xe3, 0x9e, 0x5a, 0x12, 0x5c, 0x9a, 0x4c, 0x94, 0x6a, 0x35, 0x2e, 0x36, 0xbf,
+	0xfc, 0x92, 0xcc, 0xb4, 0x4a, 0x21, 0x34, 0x19, 0x29, 0x14, 0x7d, 0x42, 0xba, 0x5c, 0xbc, 0x6e,
+	0x99, 0x79, 0x29, 0x58, 0x8d, 0xf5, 0x74, 0xc1, 0x30, 0x56, 0x8f, 0x4b, 0xc0, 0x39, 0x23, 0x35,
+	0x39, 0x1b, 0x87, 0xb3, 0x3d, 0x5d, 0x50, 0x8d, 0x4f, 0x62, 0x03, 0x87, 0xa3, 0x31, 0x20, 0x00,
+	0x00, 0xff, 0xff, 0xcd, 0x5a, 0xfd, 0x04, 0x56, 0x01, 0x00, 0x00,
 }

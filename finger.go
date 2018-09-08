@@ -46,9 +46,9 @@ func fingerMath(n []byte, i int, m int) []byte {
 	return res.Bytes()
 }
 
-// fixNextFinger runs periodically (in a seperate go routine)
-// to fix entries in our finger table.
-func (n *Node) fixNextFinger(next int) int {
+// called periodically. refreshes finger table entries.
+// next stores the index of the next finger to fix.
+func (n *Node) fixFingers(next int) int {
 	nextHash := fingerMath(n.Id, next, 8)
 	succ, err := n.findSuccessor(nextHash)
 	if err != nil || succ == nil {
