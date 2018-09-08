@@ -187,16 +187,24 @@ func (g *GrpcTransport) Shutdown() {
 
 // Closes old outbound connections
 func (g *GrpcTransport) reapOld() {
+	ticker := time.NewTicker(60 * time.Second)
+
 	for {
 		if atomic.LoadInt32(&g.shutdown) == 1 {
 			return
 		}
-		time.Sleep(30 * time.Second)
-		g.reapOnce()
+		select {
+		case <-ticker.C:
+			g.reap()
+			// case <-node.shutdownCh:
+			// 	ticker.Stop()
+			// 	return
+		}
+
 	}
 }
 
-func (g *GrpcTransport) reapOnce() {
+func (g *GrpcTransport) reap() {
 	g.poolMtx.Lock()
 	defer g.poolMtx.Unlock()
 	for host, conn := range g.pool {
