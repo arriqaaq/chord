@@ -394,12 +394,6 @@ func (n *Node) CheckPredecessor(ctx context.Context, id *internal.ID) (*internal
 	return emptyRequest, nil
 }
 
-//TODO
-func (n *Node) ClosestPrecedingFinger(ctx context.Context, node *internal.ID) (*internal.Node, error) {
-	return nil, nil
-}
-
-//TODO
 func (n *Node) GetPredecessor(ctx context.Context, r *internal.ER) (*internal.Node, error) {
 	n.predMtx.RLock()
 	pred := n.predecessor
@@ -410,7 +404,6 @@ func (n *Node) GetPredecessor(ctx context.Context, r *internal.ER) (*internal.No
 	return pred, nil
 }
 
-//TODO
 func (n *Node) Notify(ctx context.Context, node *internal.Node) (*internal.ER, error) {
 	n.predMtx.Lock()
 	defer n.predMtx.Unlock()
