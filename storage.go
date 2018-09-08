@@ -13,20 +13,20 @@ type Storage interface {
 	MDelete(...string) error
 }
 
-func NewArrayStore(hashFunc hash.Hash) Storage {
-	return &arrayStore{
+func NewMapStore(hashFunc hash.Hash) Storage {
+	return &mapStore{
 		data: make(map[string]string),
 		Hash: hashFunc,
 	}
 }
 
-type arrayStore struct {
+type mapStore struct {
 	data map[string]string
 	Hash hash.Hash // Hash function to use
 
 }
 
-func (a *arrayStore) hashKey(key string) ([]byte, error) {
+func (a *mapStore) hashKey(key string) ([]byte, error) {
 	h := a.Hash
 	if _, err := h.Write([]byte(key)); err != nil {
 		return nil, err
@@ -36,7 +36,7 @@ func (a *arrayStore) hashKey(key string) ([]byte, error) {
 	return val, nil
 }
 
-func (a *arrayStore) Get(key string) ([]byte, error) {
+func (a *mapStore) Get(key string) ([]byte, error) {
 	val, ok := a.data[key]
 	if !ok {
 		return nil, ERR_KEY_NOT_FOUND
@@ -44,17 +44,17 @@ func (a *arrayStore) Get(key string) ([]byte, error) {
 	return []byte(val), nil
 }
 
-func (a *arrayStore) Set(key, value string) error {
+func (a *mapStore) Set(key, value string) error {
 	a.data[key] = value
 	return nil
 }
 
-func (a *arrayStore) Delete(key string) error {
+func (a *mapStore) Delete(key string) error {
 	delete(a.data, key)
 	return nil
 }
 
-func (a *arrayStore) Between(from []byte, to []byte) ([]*internal.KV, error) {
+func (a *mapStore) Between(from []byte, to []byte) ([]*internal.KV, error) {
 	vals := make([]*internal.KV, 0, 10)
 	for k, v := range a.data {
 		hashedKey, err := a.hashKey(k)
@@ -72,7 +72,7 @@ func (a *arrayStore) Between(from []byte, to []byte) ([]*internal.KV, error) {
 	return vals, nil
 }
 
-func (a *arrayStore) MDelete(keys ...string) error {
+func (a *mapStore) MDelete(keys ...string) error {
 	for _, k := range keys {
 		delete(a.data, k)
 	}

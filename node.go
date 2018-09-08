@@ -63,7 +63,7 @@ func NewNode(cnf *Config, joinNode *internal.Node) (*Node, error) {
 		Node:       new(internal.Node),
 		shutdownCh: make(chan struct{}),
 		cnf:        cnf,
-		storage:    NewArrayStore(cnf.Hash),
+		storage:    NewMapStore(cnf.Hash),
 	}
 
 	if cnf.Id != nil {
