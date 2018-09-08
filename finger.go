@@ -1,17 +1,16 @@
 package chord
 
 import (
-	"fmt"
 	"github.com/arriqaaq/chord/internal"
 	"math/big"
 )
 
 type fingerTable []*fingerEntry
 
-func newFingerTable(node *internal.Node) fingerTable {
+func newFingerTable(node *internal.Node, m int) fingerTable {
 	ft := make([]*fingerEntry, 8)
 	for i := range ft {
-		ft[i] = newFingerEntry(fingerMath(node.Id, i, 8), node)
+		ft[i] = newFingerEntry(fingerID(node.Id, i, m), node)
 	}
 
 	return ft
@@ -31,40 +30,29 @@ func newFingerEntry(id []byte, node *internal.Node) *fingerEntry {
 	}
 }
 
-// fingerMath does the `(n + 2^i) mod (2^m)` operation
-// needed to update finger table entries.
-func fingerMath(n []byte, i int, m int) []byte {
-	iInt := big.NewInt(2)
-	iInt.Exp(iInt, big.NewInt(int64(i)), big.NewInt(100))
-	mInt := big.NewInt(2)
-	mInt.Exp(mInt, big.NewInt(int64(m)), big.NewInt(100))
+// Computes the offset by (n + 2^i) mod (2^m)
+func fingerID(n []byte, i int, m int) []byte {
 
-	res := &big.Int{} // res will pretty much be an accumulator
-	res.SetBytes(n).Add(res, iInt).Mod(res, mInt)
+	// Convert the ID to a bigint
+	idInt := big.Int{}
+	idInt.SetBytes(n)
 
-	// return padID(res.Bytes())
-	return res.Bytes()
-}
+	// Get the offset
+	two := big.NewInt(2)
+	offset := big.Int{}
+	offset.Exp(two, big.NewInt(int64(i)), nil)
 
-// called periodically. refreshes finger table entries.
-// next stores the index of the next finger to fix.
-func (n *Node) fixFingers(next int) int {
-	nextHash := fingerMath(n.Id, next, 8)
-	succ, err := n.findSuccessor(nextHash)
-	if err != nil || succ == nil {
-		fmt.Println("finger lookup failed", n.Id, nextHash)
-		// TODO: handle failed client here
-		// return next
-		return (next + 1) % 8
-	}
+	// Sum
+	sum := big.Int{}
+	sum.Add(&idInt, &offset)
 
-	finger := newFingerEntry(nextHash, succ)
-	n.ftMtx.Lock()
-	n.fingerTable[next] = finger
-	// for _, v := range n.fingerTable {
-	// 	fmt.Println("finger data ", n.Id, v.Id, v.Node.Id)
-	// }
-	n.ftMtx.Unlock()
+	// Get the ceiling
+	ceil := big.Int{}
+	ceil.Exp(two, big.NewInt(int64(m)), nil)
 
-	return (next + 1) % 8
+	// Apply the mod
+	idInt.Mod(&sum, &ceil)
+
+	// Add together
+	return idInt.Bytes()
 }

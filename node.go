@@ -1,6 +1,7 @@
 package chord
 
 import (
+	"crypto/sha1"
 	"fmt"
 	"github.com/arriqaaq/chord/internal"
 	"golang.org/x/net/context"
@@ -11,10 +12,18 @@ import (
 )
 
 func DefaultConfig() *Config {
-	return &Config{
-		ServerOpts: make([]grpc.ServerOption, 1),
-		DialOpts:   make([]grpc.DialOption, 1),
+	n := &Config{
+		Hash:     sha1.New(),
+		DialOpts: make([]grpc.DialOption, 0, 5),
 	}
+	n.HashSize = n.Hash.Size() * 10
+	n.DialOpts = append(n.DialOpts,
+		grpc.WithBlock(),
+		grpc.WithTimeout(5*time.Second),
+		grpc.FailOnNonTempDialError(true),
+		grpc.WithInsecure(),
+	)
+	return n
 }
 
 type Config struct {
@@ -22,16 +31,17 @@ type Config struct {
 	Addr         string
 	ServerOpts   []grpc.ServerOption
 	DialOpts     []grpc.DialOption
-	HashFunc     func() hash.Hash // Hash function to use
-	StabilizeMin time.Duration    // Minimum stabilization time
-	StabilizeMax time.Duration    // Maximum stabilization time
+	Hash         hash.Hash // Hash function to use
+	HashSize     int
+	StabilizeMin time.Duration // Minimum stabilization time
+	StabilizeMax time.Duration // Maximum stabilization time
 	Timeout      time.Duration
 	MaxIdle      time.Duration
 }
 
-type Storage interface {
-	Get(string) string
-	Put(string, string) error
+func (c *Config) Validate() error {
+	// hashsize shouldnt be less than hash func size
+	return nil
 }
 
 func NewInode(id []byte, addr string) *internal.Node {
@@ -41,18 +51,24 @@ func NewInode(id []byte, addr string) *internal.Node {
 	}
 }
 
-// NewNode creates a Chord node with a pre-defined ID (useful for
-// testing) if a non-nil id is provided.
+/*
+	NewNode creates a new Chord node. Returns error if node already
+	exists in the chord ring
+*/
 func NewNode(cnf *Config, joinNode *internal.Node) (*Node, error) {
+	if err := cnf.Validate(); err != nil {
+		return nil, err
+	}
 	node := &Node{
 		Node:       new(internal.Node),
 		shutdownCh: make(chan struct{}),
+		cnf:        cnf,
 	}
 
 	if cnf.Id != nil {
 		node.Node.Id = cnf.Id
 	} else {
-		id, err := hashKey(cnf.Addr)
+		id, err := node.hashKey(cnf.Addr)
 		if err != nil {
 			return nil, err
 		}
@@ -61,7 +77,7 @@ func NewNode(cnf *Config, joinNode *internal.Node) (*Node, error) {
 	node.Node.Addr = cnf.Addr
 
 	// Populate finger table
-	node.fingerTable = newFingerTable(node.Node)
+	node.fingerTable = newFingerTable(node.Node, cnf.HashSize)
 
 	// Start RPC server
 	transport, err := NewGrpcTransport(cnf)
@@ -79,7 +95,7 @@ func NewNode(cnf *Config, joinNode *internal.Node) (*Node, error) {
 		return nil, err
 	}
 
-	// thread 1: kick off timer to stabilize periodically
+	// Peridoically stabilize the node.
 	go func() {
 		ticker := time.NewTicker(3 * time.Second)
 		for {
@@ -93,14 +109,14 @@ func NewNode(cnf *Config, joinNode *internal.Node) (*Node, error) {
 		}
 	}()
 
-	// thread 2: kick off timer to fix finger table periodically
+	// Peridoically fix finger tables.
 	go func() {
 		next := 0
 		ticker := time.NewTicker(5 * time.Second)
 		for {
 			select {
 			case <-ticker.C:
-				next = node.fixNextFinger(next)
+				next = node.fixFinger(next)
 			case <-node.shutdownCh:
 				ticker.Stop()
 				return
@@ -108,7 +124,7 @@ func NewNode(cnf *Config, joinNode *internal.Node) (*Node, error) {
 		}
 	}()
 
-	// thread 3: CheckPredecessor checkes whether predecessor has failed.
+	// Peridoically checkes whether predecessor has failed.
 
 	go func() {
 		ticker := time.NewTicker(10 * time.Second)
@@ -128,6 +144,8 @@ func NewNode(cnf *Config, joinNode *internal.Node) (*Node, error) {
 
 type Node struct {
 	*internal.Node
+
+	cnf *Config
 
 	predecessor *internal.Node
 	predMtx     sync.RWMutex
@@ -149,8 +167,6 @@ type Node struct {
 	lastStablized time.Time
 }
 
-// join allows this node to join an existing ring that a remote node
-// is a part of (i.e., other).
 func (n *Node) join(joinNode *internal.Node) error {
 	// First check if node already present in the circle
 	// Join this node to the same chord ring as parent
@@ -162,7 +178,7 @@ func (n *Node) join(joinNode *internal.Node) error {
 			return err
 		}
 
-		if idsEqual(remoteNode.Id, n.Id) {
+		if isEqual(remoteNode.Id, n.Id) {
 			return ERR_NODE_EXISTS
 		}
 		foo = joinNode
@@ -252,6 +268,78 @@ func (n *Node) closestPrecedingNode(id []byte) *internal.Node {
 	return curr
 }
 
+/*
+	Periodic functions implementation
+*/
+
+func (n *Node) stabilize() {
+	// fmt.Println("stabilize: ", n.Id, n.successor, n.predecessor)
+	n.succMtx.RLock()
+	succ := n.successor
+	if succ == nil {
+		n.succMtx.RUnlock()
+		return
+	}
+	n.succMtx.RUnlock()
+
+	x, err := n.getPredecessorRPC(succ)
+	if err != nil || x == nil {
+		fmt.Println("error getting predecessor, ", err, x)
+		return
+	}
+	if x.Id != nil && between(x.Id, n.Id, succ.Id) {
+		n.succMtx.Lock()
+		n.successor = x
+		n.succMtx.Unlock()
+		// fmt.Println("setting successor ", n.Id, x.Id)
+	}
+	n.notifyRPC(succ, n.Node)
+}
+
+// called periodically. refreshes finger table entries.
+// next stores the index of the next finger to fix.
+func (n *Node) fixFinger(next int) int {
+	nextHash := fingerID(n.Id, next, n.cnf.HashSize)
+	succ, err := n.findSuccessor(nextHash)
+	nextNum := (next + 1) % n.cnf.HashSize
+	if err != nil || succ == nil {
+		fmt.Println("finger lookup failed", n.Id, nextHash)
+		// TODO: this will keep retrying, check what to do
+		// return next
+		return nextNum
+	}
+
+	finger := newFingerEntry(nextHash, succ)
+	n.ftMtx.Lock()
+	n.fingerTable[next] = finger
+	// for _, v := range n.fingerTable {
+	// 	fmt.Println("finger data ", n.Id, v.Id, v.Node.Id)
+	// }
+	n.ftMtx.Unlock()
+
+	return nextNum
+}
+
+func (n *Node) checkPredecessor() {
+	// implement using rpc func
+	n.predMtx.RLock()
+	pred := n.predecessor
+	n.predMtx.RUnlock()
+
+	err := n.transport.CheckPredecessor(pred)
+
+	if err != nil {
+		fmt.Println("predecessor failed!")
+		n.predMtx.Lock()
+		n.predecessor = nil
+		n.predMtx.Unlock()
+	}
+}
+
+/*
+	RPC callers implementation
+*/
+
 // getSuccessorRPC the successor ID of a remote node.
 func (n *Node) getSuccessorRPC(node *internal.Node) (*internal.Node, error) {
 	return n.transport.GetSuccessor(node)
@@ -302,6 +390,10 @@ func (n *Node) FindSuccessor(ctx context.Context, id *internal.ID) (*internal.No
 
 }
 
+func (n *Node) CheckPredecessor(ctx context.Context, id *internal.ID) (*internal.ER, error) {
+	return emptyRequest, nil
+}
+
 //TODO
 func (n *Node) ClosestPrecedingFinger(ctx context.Context, node *internal.ID) (*internal.Node, error) {
 	return nil, nil
@@ -328,38 +420,4 @@ func (n *Node) Notify(ctx context.Context, node *internal.Node) (*internal.ER, e
 		n.predecessor = node
 	}
 	return emptyRequest, nil
-}
-
-func (n *Node) stabilize() {
-	// fmt.Println("stabilize: ", n.Id, n.successor, n.predecessor)
-	n.succMtx.RLock()
-	succ := n.successor
-	if succ == nil {
-		n.succMtx.RUnlock()
-		return
-	}
-	n.succMtx.RUnlock()
-
-	x, err := n.getPredecessorRPC(succ)
-	if err != nil || x == nil {
-		fmt.Println("error getting predecessor, ", err, x)
-		return
-	}
-	if x.Id != nil && between(x.Id, n.Id, succ.Id) {
-		n.succMtx.Lock()
-		n.successor = x
-		n.succMtx.Unlock()
-		// fmt.Println("setting successor ", n.Id, x.Id)
-	}
-	n.notifyRPC(succ, n.Node)
-}
-
-func (n *Node) checkPredecessor() {
-	x, err := n.getPredecessorRPC(n.Node)
-	if err != nil || x == nil {
-		fmt.Println("predecessor failed!")
-		n.predMtx.Lock()
-		n.predecessor = nil
-		n.predMtx.Unlock()
-	}
 }

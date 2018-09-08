@@ -20,12 +20,7 @@ var (
 // Dial wraps grpc's dial function with settings that facilitate the
 // functionality of transport.
 func Dial(addr string, opts ...grpc.DialOption) (*grpc.ClientConn, error) {
-	return grpc.Dial(addr, append(append(opts,
-		grpc.WithBlock(),
-		grpc.WithTimeout(5*time.Second),
-		grpc.FailOnNonTempDialError(true)),
-		grpc.WithInsecure(),
-	)...)
+	return grpc.Dial(addr, opts...)
 }
 
 // Implements the methods needed for a Chord ring
@@ -36,6 +31,7 @@ type Transport interface {
 	FindSuccessor(*internal.Node, []byte) (*internal.Node, error)
 	GetPredecessor(*internal.Node) (*internal.Node, error)
 	Notify(*internal.Node, *internal.Node) error
+	CheckPredecessor(*internal.Node) error
 }
 
 type GrpcTransport struct {
@@ -52,6 +48,33 @@ type GrpcTransport struct {
 	server *grpc.Server
 
 	shutdown int32
+}
+
+// func NewGrpcTransport(config *Config) (internal.ChordClient, error) {
+func NewGrpcTransport(config *Config) (*GrpcTransport, error) {
+
+	addr := config.Addr
+	// Try to start the listener
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return nil, err
+	}
+
+	pool := make(map[string]*grpcConn)
+
+	// Setup the transport
+	grp := &GrpcTransport{
+		sock:    listener.(*net.TCPListener),
+		timeout: config.Timeout,
+		maxIdle: config.MaxIdle,
+		pool:    pool,
+		config:  config,
+	}
+
+	grp.server = grpc.NewServer(config.ServerOpts...)
+
+	// Done
+	return grp, nil
 }
 
 type grpcConn struct {
@@ -87,8 +110,9 @@ func (g *GrpcTransport) getConn(
 		return cc.client, nil
 	}
 
-	// conn, err := Dial(addr, g.config.DialOpts...)
-	conn, err := Dial(addr)
+	var conn *grpc.ClientConn
+	var err error
+	conn, err = Dial(addr, g.config.DialOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -104,33 +128,6 @@ func (g *GrpcTransport) getConn(
 	g.poolMtx.Unlock()
 
 	return client, nil
-}
-
-// func NewGrpcTransport(config *Config) (internal.ChordClient, error) {
-func NewGrpcTransport(config *Config) (*GrpcTransport, error) {
-
-	addr := config.Addr
-	// Try to start the listener
-	listener, err := net.Listen("tcp", addr)
-	if err != nil {
-		return nil, err
-	}
-
-	pool := make(map[string]*grpcConn)
-
-	// Setup the transport
-	grp := &GrpcTransport{
-		sock:    listener.(*net.TCPListener),
-		timeout: config.Timeout,
-		maxIdle: config.MaxIdle,
-		pool:    pool,
-	}
-
-	// grp.server = grpc.NewServer(config.ServerOpts...)
-	grp.server = grpc.NewServer()
-
-	// Done
-	return grp, nil
 }
 
 func (g *GrpcTransport) Start() {
@@ -245,4 +242,15 @@ func (g *GrpcTransport) Notify(node, pred *internal.Node) error {
 	_, err = client.Notify(ctx, pred)
 	return err
 
+}
+
+func (g *GrpcTransport) CheckPredecessor(node *internal.Node) error {
+	client, err := g.getConn(node.Addr)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), g.timeout)
+	defer cancel()
+	_, err = client.CheckPredecessor(ctx, &internal.ID{Id: node.Id})
+	return err
 }
