@@ -17,15 +17,15 @@ var (
 	emptyRequest = &internal.ER{}
 )
 
-// Dial wraps grpc's dial function with settings that facilitate the
-// functionality of transport.
 func Dial(addr string, opts ...grpc.DialOption) (*grpc.ClientConn, error) {
 	return grpc.Dial(addr, opts...)
 }
 
-// Implements the methods needed for a Chord ring
+/*
+	Transport enables a node to talk to the other nodes in
+	the ring
+*/
 type Transport interface {
-	// Find a successor
 	Start()
 	GetSuccessor(*internal.Node) (*internal.Node, error)
 	FindSuccessor(*internal.Node, []byte) (*internal.Node, error)
@@ -238,7 +238,6 @@ func (g *GrpcTransport) Notify(node, pred *internal.Node) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), g.timeout)
 	defer cancel()
-
 	_, err = client.Notify(ctx, pred)
 	return err
 
