@@ -25,16 +25,20 @@ func createNode(id string, addr string, sister *internal.Node) (*chord.Node, err
 	return n, err
 }
 
+func createID(id string) []byte {
+	val := big.NewInt(0)
+	val.SetString(id, 10)
+	return val.Bytes()
+}
+
 func main() {
 	var x *internal.Node
 	var y error
 
 	createNode("1", "0.0.0.0:8001", nil)
 
-	val := big.NewInt(0)
-	val.SetString("1", 10)
-
-	sister := chord.NewInode(val.Bytes(), "0.0.0.0:8001")
+	id1 := createID("1")
+	sister := chord.NewInode(id1, "0.0.0.0:8001")
 	h, err := createNode("3", "0.0.0.0:8002", sister)
 	if err != nil {
 		log.Println(h, err)

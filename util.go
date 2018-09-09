@@ -45,11 +45,10 @@ func between(key, a, b []byte) bool {
 }
 
 func (n *Node) hashKey(key string) ([]byte, error) {
-	h := n.cnf.Hash
+	h := n.cnf.Hash()
 	if _, err := h.Write([]byte(key)); err != nil {
 		return nil, err
 	}
 	val := h.Sum(nil)
-	h.Reset()
 	return val, nil
 }

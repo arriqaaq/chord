@@ -13,10 +13,10 @@ import (
 
 func DefaultConfig() *Config {
 	n := &Config{
-		Hash:     sha1.New(),
+		Hash:     sha1.New,
 		DialOpts: make([]grpc.DialOption, 0, 5),
 	}
-	n.HashSize = n.Hash.Size() * 10
+	n.HashSize = n.Hash().Size() * 10
 	n.DialOpts = append(n.DialOpts,
 		grpc.WithBlock(),
 		grpc.WithTimeout(5*time.Second),
@@ -27,16 +27,20 @@ func DefaultConfig() *Config {
 }
 
 type Config struct {
-	Id           []byte
-	Addr         string
-	ServerOpts   []grpc.ServerOption
-	DialOpts     []grpc.DialOption
-	Hash         hash.Hash // Hash function to use
-	HashSize     int
+	Id   string
+	Addr string
+
+	ServerOpts []grpc.ServerOption
+	DialOpts   []grpc.DialOption
+
+	Hash     func() hash.Hash // Hash function to use
+	HashSize int
+
 	StabilizeMin time.Duration // Minimum stabilization time
 	StabilizeMax time.Duration // Maximum stabilization time
-	Timeout      time.Duration
-	MaxIdle      time.Duration
+
+	Timeout time.Duration
+	MaxIdle time.Duration
 }
 
 func (c *Config) Validate() error {
@@ -66,15 +70,19 @@ func NewNode(cnf *Config, joinNode *internal.Node) (*Node, error) {
 		storage:    NewMapStore(cnf.Hash),
 	}
 
-	if cnf.Id != nil {
-		node.Node.Id = cnf.Id
+	var nID string
+	if cnf.Id != "" {
+		nID = cnf.Id
 	} else {
-		id, err := node.hashKey(cnf.Addr)
-		if err != nil {
-			return nil, err
-		}
-		node.Node.Id = id
+		nID = cnf.Addr
 	}
+	id, err := node.hashKey(nID)
+	if err != nil {
+		return nil, err
+	}
+	fmt.Printf("new node id %s, %x\n", nID, id)
+
+	node.Node.Id = id
 	node.Node.Addr = cnf.Addr
 
 	// Populate finger table
@@ -280,7 +288,8 @@ func (n *Node) transferKeys() {
 		n.storage.Set(item.Key, item.Value)
 		delKeyList = append(delKeyList, item.Key)
 	}
-	// delete the keys from the other node
+	// delete the keys from the successor node, as current node
+	// is responsible for the keys
 	if len(delKeyList) > 0 {
 		n.deleteKeys(succ, delKeyList)
 	}
@@ -326,6 +335,9 @@ func (n *Node) findSuccessor(id []byte) (*internal.Node, error) {
 	if succ == nil {
 		return curr, nil
 	}
+	fmt.Printf("id %x\n", id)
+	fmt.Printf("curr %x\n", curr.Id)
+	fmt.Printf("succ %x\n", succ.Id)
 
 	if betweenRightIncl(id, curr.Id, succ.Id) {
 		// fmt.Println("1ad", n.Id, id, curr.Id, succ.Id)
@@ -435,13 +447,14 @@ func (n *Node) checkPredecessor() {
 	pred := n.predecessor
 	n.predMtx.RUnlock()
 
-	err := n.transport.CheckPredecessor(pred)
-
-	if err != nil {
-		fmt.Println("predecessor failed!")
-		n.predMtx.Lock()
-		n.predecessor = nil
-		n.predMtx.Unlock()
+	if pred != nil {
+		err := n.transport.CheckPredecessor(pred)
+		if err != nil {
+			fmt.Println("predecessor failed!")
+			n.predMtx.Lock()
+			n.predecessor = nil
+			n.predMtx.Unlock()
+		}
 	}
 }
 

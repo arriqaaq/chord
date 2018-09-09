@@ -13,7 +13,7 @@ type Storage interface {
 	MDelete(...string) error
 }
 
-func NewMapStore(hashFunc hash.Hash) Storage {
+func NewMapStore(hashFunc func() hash.Hash) Storage {
 	return &mapStore{
 		data: make(map[string]string),
 		Hash: hashFunc,
@@ -22,17 +22,16 @@ func NewMapStore(hashFunc hash.Hash) Storage {
 
 type mapStore struct {
 	data map[string]string
-	Hash hash.Hash // Hash function to use
+	Hash func() hash.Hash // Hash function to use
 
 }
 
 func (a *mapStore) hashKey(key string) ([]byte, error) {
-	h := a.Hash
+	h := a.Hash()
 	if _, err := h.Write([]byte(key)); err != nil {
 		return nil, err
 	}
 	val := h.Sum(nil)
-	h.Reset()
 	return val, nil
 }
 
