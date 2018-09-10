@@ -8,7 +8,7 @@ import (
 type fingerTable []*fingerEntry
 
 func newFingerTable(node *internal.Node, m int) fingerTable {
-	ft := make([]*fingerEntry, 8)
+	ft := make([]*fingerEntry, m)
 	for i := range ft {
 		ft[i] = newFingerEntry(fingerID(node.Id, i, m), node)
 	}

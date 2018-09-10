@@ -18,6 +18,10 @@ service Chord {
     rpc FindSuccessor(ID) returns (Node);
     // CheckPredecessor checkes whether predecessor has failed.
     rpc CheckPredecessor(ID) returns (ER);
+    // SetPredecessor sets predecessor for a node.
+    rpc SetPredecessor(Node) returns (ER);
+    // SetPredecessor sets predecessor for a node.
+    rpc SetSuccessor(Node) returns (ER);
 
     // Get returns the value in Chord ring for the given key.
     rpc XGet(GetRequest) returns (GetResponse);

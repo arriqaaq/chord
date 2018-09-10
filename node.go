@@ -16,7 +16,8 @@ func DefaultConfig() *Config {
 		Hash:     sha1.New,
 		DialOpts: make([]grpc.DialOption, 0, 5),
 	}
-	n.HashSize = n.Hash().Size() * 10
+	n.HashSize = n.Hash().Size()
+
 	n.DialOpts = append(n.DialOpts,
 		grpc.WithBlock(),
 		grpc.WithTimeout(5*time.Second),
@@ -48,9 +49,15 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-func NewInode(id []byte, addr string) *internal.Node {
+func NewInode(id string, addr string) *internal.Node {
+	h := sha1.New()
+	if _, err := h.Write([]byte(id)); err != nil {
+		return nil
+	}
+	val := h.Sum(nil)
+
 	return &internal.Node{
-		Id:   id,
+		Id:   val,
 		Addr: addr,
 	}
 }
@@ -106,7 +113,7 @@ func NewNode(cnf *Config, joinNode *internal.Node) (*Node, error) {
 
 	// Peridoically stabilize the node.
 	go func() {
-		ticker := time.NewTicker(3 * time.Second)
+		ticker := time.NewTicker(2 * time.Second)
 		for {
 			select {
 			case <-ticker.C:
@@ -176,6 +183,15 @@ type Node struct {
 	lastStablized time.Time
 }
 
+func (n *Node) hashKey(key string) ([]byte, error) {
+	h := n.cnf.Hash()
+	if _, err := h.Write([]byte(key)); err != nil {
+		return nil, err
+	}
+	val := h.Sum(nil)
+	return val, nil
+}
+
 func (n *Node) join(joinNode *internal.Node) error {
 	// First check if node already present in the circle
 	// Join this node to the same chord ring as parent
@@ -204,9 +220,6 @@ func (n *Node) join(joinNode *internal.Node) error {
 	n.succMtx.Lock()
 	n.successor = succ
 	n.succMtx.Unlock()
-
-	// request keys from parent node
-	n.transferKeys()
 
 	return nil
 }
@@ -237,6 +250,7 @@ func (n *Node) locate(key string) (*internal.Node, error) {
 	if err != nil {
 		return nil, err
 	}
+	fmt.Printf("find key id %s, %x\n", key, id)
 	return n.findSuccessor(id)
 }
 
@@ -270,12 +284,9 @@ func (n *Node) delete(key string) error {
 	return err
 }
 
-func (n *Node) transferKeys() {
-	n.succMtx.RLock()
-	succ := n.successor
-	n.succMtx.RUnlock()
+func (n *Node) transferKeys(pred, succ *internal.Node) {
 
-	keys, err := n.requestKeys(succ)
+	keys, err := n.requestKeys(pred, succ)
 	if len(keys) > 0 {
 		fmt.Println("transfering: ", keys, err)
 	}
@@ -301,21 +312,11 @@ func (n *Node) deleteKeys(node *internal.Node, keys []string) error {
 }
 
 // When a new node joins, it requests keys from it's successor
-func (n *Node) requestKeys(succ *internal.Node) ([]*internal.KV, error) {
+func (n *Node) requestKeys(pred, succ *internal.Node) ([]*internal.KV, error) {
 
-	/*
-		Get successor's predecessor, as current node is new
-		and predecessor is initally nil
-	*/
-	pred, err := n.getPredecessorRPC(succ)
-	if err != nil {
-		return nil, err
-	}
-
-	if isEqual(n.Id, pred.Id) {
+	if isEqual(n.Id, succ.Id) {
 		return nil, nil
 	}
-
 	return n.requestKeysRPC(
 		succ, pred.Id, n.Id,
 	)
@@ -327,6 +328,7 @@ func (n *Node) requestKeys(succ *internal.Node) ([]*internal.KV, error) {
 	then look for how to travel in the ring
 */
 func (n *Node) findSuccessor(id []byte) (*internal.Node, error) {
+	// Check if lock is needed throughout the process
 	n.succMtx.RLock()
 	defer n.succMtx.RUnlock()
 	curr := n.Node
@@ -335,9 +337,12 @@ func (n *Node) findSuccessor(id []byte) (*internal.Node, error) {
 	if succ == nil {
 		return curr, nil
 	}
-	fmt.Printf("id %x\n", id)
-	fmt.Printf("curr %x\n", curr.Id)
-	fmt.Printf("succ %x\n", succ.Id)
+	// fmt.Printf("id %x\n", id)
+	// fmt.Printf("curr %x\n", curr.Id)
+	// fmt.Printf("succ %x\n", succ.Id)
+	// if n.predecessor != nil {
+	// 	fmt.Printf("pred %x\n", n.predecessor.Id)
+	// }
 
 	if betweenRightIncl(id, curr.Id, succ.Id) {
 		// fmt.Println("1ad", n.Id, id, curr.Id, succ.Id)
@@ -434,7 +439,7 @@ func (n *Node) fixFinger(next int) int {
 	n.ftMtx.Lock()
 	n.fingerTable[next] = finger
 	// for _, v := range n.fingerTable {
-	// 	fmt.Println("finger data ", n.Id, v.Id, v.Node.Id)
+	// 	fmt.Printf("finger data %x,%x,%x\n", n.Id, v.Id, v.Node.Id)
 	// }
 	n.ftMtx.Unlock()
 
@@ -467,6 +472,11 @@ func (n *Node) getSuccessorRPC(node *internal.Node) (*internal.Node, error) {
 	return n.transport.GetSuccessor(node)
 }
 
+// setSuccessorRPC sets the successor of a given node.
+func (n *Node) setSuccessorRPC(node *internal.Node, succ *internal.Node) error {
+	return n.transport.SetSuccessor(node, succ)
+}
+
 // findSuccessorRPC finds the successor node of a given ID in the entire ring.
 func (n *Node) findSuccessorRPC(node *internal.Node, id []byte) (*internal.Node, error) {
 	return n.transport.FindSuccessor(node, id)
@@ -475,6 +485,11 @@ func (n *Node) findSuccessorRPC(node *internal.Node, id []byte) (*internal.Node,
 // getSuccessorRPC the successor ID of a remote node.
 func (n *Node) getPredecessorRPC(node *internal.Node) (*internal.Node, error) {
 	return n.transport.GetPredecessor(node)
+}
+
+// setPredecessorRPC sets the predecessor of a given node.
+func (n *Node) setPredecessorRPC(node *internal.Node, pred *internal.Node) error {
+	return n.transport.SetPredecessor(node, pred)
 }
 
 // notifyRPC notifies a remote node that pred is its predecessor.
@@ -520,6 +535,22 @@ func (n *Node) GetSuccessor(ctx context.Context, r *internal.ER) (*internal.Node
 	return succ, nil
 }
 
+// SetSuccessor sets the successor on the node..
+func (n *Node) SetSuccessor(ctx context.Context, succ *internal.Node) (*internal.ER, error) {
+	n.succMtx.Lock()
+	n.successor = succ
+	n.succMtx.Unlock()
+	return emptyRequest, nil
+}
+
+// SetPredecessor sets the predecessor on the node..
+func (n *Node) SetPredecessor(ctx context.Context, pred *internal.Node) (*internal.ER, error) {
+	n.predMtx.Lock()
+	n.predecessor = pred
+	n.predMtx.Unlock()
+	return emptyRequest, nil
+}
+
 func (n *Node) FindSuccessor(ctx context.Context, id *internal.ID) (*internal.Node, error) {
 	succ, err := n.findSuccessor(id.Id)
 	if err != nil {
@@ -551,11 +582,25 @@ func (n *Node) GetPredecessor(ctx context.Context, r *internal.ER) (*internal.No
 func (n *Node) Notify(ctx context.Context, node *internal.Node) (*internal.ER, error) {
 	n.predMtx.Lock()
 	defer n.predMtx.Unlock()
+	var prevPredNode *internal.Node
+
 	pred := n.predecessor
 	if pred == nil || between(node.Id, pred.Id, n.Id) {
 		// fmt.Println("setting predecessor", n.Id, node.Id)
+		if n.predecessor != nil {
+			prevPredNode = n.predecessor
+		}
 		n.predecessor = node
+
+		// transfer keys from parent node
+		if prevPredNode != nil {
+			if between(n.predecessor.Id, prevPredNode.Id, n.Id) {
+				n.transferKeys(prevPredNode, n.predecessor)
+			}
+		}
+
 	}
+
 	return emptyRequest, nil
 }
 
@@ -598,4 +643,27 @@ func (n *Node) XMultiDelete(ctx context.Context, req *internal.MultiDeleteReques
 	defer n.stMtx.Unlock()
 	err := n.storage.MDelete(req.Keys...)
 	return emptyDeleteResponse, err
+}
+
+func (n *Node) Stop() {
+	close(n.shutdownCh)
+
+	// Notify successor to change its predecessor pointer to our predecessor.
+	// Do nothing if we are our own successor (i.e. we are the only node in the
+	// ring).
+	n.succMtx.RLock()
+	succ := n.successor
+	n.succMtx.RUnlock()
+
+	n.predMtx.RLock()
+	pred := n.predecessor
+	n.predMtx.RUnlock()
+
+	if n.Node.Addr != succ.Addr && pred != nil {
+		n.transferKeys(pred, succ)
+		n.setPredecessorRPC(succ, pred)
+		n.setSuccessorRPC(pred, succ)
+	}
+
+	n.transport.Stop()
 }

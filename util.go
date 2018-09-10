@@ -2,6 +2,7 @@ package chord
 
 import (
 	"bytes"
+	"crypto/sha1"
 	"errors"
 	"math/rand"
 	"time"
@@ -44,11 +45,23 @@ func between(key, a, b []byte) bool {
 	return false
 }
 
-func (n *Node) hashKey(key string) ([]byte, error) {
-	h := n.cnf.Hash()
+// For testing
+func GetHashID(key string) []byte {
+	h := sha1.New()
 	if _, err := h.Write([]byte(key)); err != nil {
-		return nil, err
+		return nil
 	}
 	val := h.Sum(nil)
-	return val, nil
+	return val
 }
+
+// func (n *Node) hashKey(key string) ([]byte, error) {
+// 	i := big.NewInt(0)
+// 	i.SetString(key, 0)
+// 	id := i.Bytes()
+// 	if len(id) == 0 {
+// 		return nil, errors.New("invalid ID")
+// 	}
+
+// 	return id, nil
+// }

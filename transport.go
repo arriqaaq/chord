@@ -30,12 +30,17 @@ func Dial(addr string, opts ...grpc.DialOption) (*grpc.ClientConn, error) {
 	the ring
 */
 type Transport interface {
-	Start()
+	Start() error
+	Stop() error
+
+	//RPC
 	GetSuccessor(*internal.Node) (*internal.Node, error)
 	FindSuccessor(*internal.Node, []byte) (*internal.Node, error)
 	GetPredecessor(*internal.Node) (*internal.Node, error)
 	Notify(*internal.Node, *internal.Node) error
 	CheckPredecessor(*internal.Node) error
+	SetPredecessor(*internal.Node, *internal.Node) error
+	SetSuccessor(*internal.Node, *internal.Node) error
 
 	//Storage
 	GetKey(*internal.Node, string) (*internal.GetResponse, error)
@@ -145,12 +150,14 @@ func (g *GrpcTransport) getConn(
 	return client, nil
 }
 
-func (g *GrpcTransport) Start() {
+func (g *GrpcTransport) Start() error {
 	// Start RPC server
 	go g.listen()
 
 	// Reap old connections
 	go g.reapOld()
+
+	return nil
 
 }
 
@@ -170,7 +177,7 @@ func (g *GrpcTransport) returnConn(o *grpcConn) {
 }
 
 // Shutdown the TCP transport
-func (g *GrpcTransport) Shutdown() {
+func (g *GrpcTransport) Stop() error {
 	atomic.StoreInt32(&g.shutdown, 1)
 
 	// Close all the connections
@@ -183,6 +190,8 @@ func (g *GrpcTransport) Shutdown() {
 	g.pool = nil
 
 	g.poolMtx.Unlock()
+
+	return nil
 }
 
 // Closes old outbound connections
@@ -255,6 +264,30 @@ func (g *GrpcTransport) GetPredecessor(node *internal.Node) (*internal.Node, err
 	ctx, cancel := context.WithTimeout(context.Background(), g.timeout)
 	defer cancel()
 	return client.GetPredecessor(ctx, emptyRequest)
+}
+
+func (g *GrpcTransport) SetPredecessor(node *internal.Node, pred *internal.Node) error {
+	client, err := g.getConn(node.Addr)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), g.timeout)
+	defer cancel()
+	_, err = client.SetPredecessor(ctx, pred)
+	return err
+}
+
+func (g *GrpcTransport) SetSuccessor(node *internal.Node, succ *internal.Node) error {
+	client, err := g.getConn(node.Addr)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), g.timeout)
+	defer cancel()
+	_, err = client.SetSuccessor(ctx, succ)
+	return err
 }
 
 func (g *GrpcTransport) Notify(node, pred *internal.Node) error {

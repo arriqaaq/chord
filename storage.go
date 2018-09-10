@@ -1,8 +1,10 @@
 package chord
 
 import (
+	// "errors"
 	"github.com/arriqaaq/chord/internal"
 	"hash"
+	// "math/big"
 )
 
 type Storage interface {
@@ -34,6 +36,17 @@ func (a *mapStore) hashKey(key string) ([]byte, error) {
 	val := h.Sum(nil)
 	return val, nil
 }
+
+// func (a *mapStore) hashKey(key string) ([]byte, error) {
+// 	i := big.NewInt(0)
+// 	i.SetString(key, 0)
+// 	id := i.Bytes()
+// 	if len(id) == 0 {
+// 		return nil, errors.New("invalid ID")
+// 	}
+
+// 	return id, nil
+// }
 
 func (a *mapStore) Get(key string) ([]byte, error) {
 	val, ok := a.data[key]
