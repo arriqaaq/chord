@@ -55,13 +55,14 @@ func GetHashID(key string) []byte {
 	return val
 }
 
-// func (n *Node) hashKey(key string) ([]byte, error) {
-// 	i := big.NewInt(0)
-// 	i.SetString(key, 0)
-// 	id := i.Bytes()
-// 	if len(id) == 0 {
-// 		return nil, errors.New("invalid ID")
-// 	}
+func padID(id []byte, m int) []byte {
+	n := m - len(id)
+	if n < 0 {
+		n = 0
+	}
 
-// 	return id, nil
-// }
+	_id := make([]byte, n)
+	id = append(_id, id...)
+
+	return id[:m]
+}

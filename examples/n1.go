@@ -11,11 +11,9 @@ import (
 )
 
 func createNode(id string, addr string, sister *internal.Node) (*chord.Node, error) {
-	val := big.NewInt(0)
-	val.SetString(id, 10)
 
 	cnf := chord.DefaultConfig()
-	cnf.Id = val.Bytes()
+	cnf.Id = id
 	cnf.Addr = addr
 	cnf.Timeout = 10 * time.Millisecond
 	cnf.MaxIdle = 100 * time.Millisecond
@@ -32,22 +30,15 @@ func createID(id string) []byte {
 }
 
 func main() {
-	var x *internal.Node
-	var y error
 
-	createNode("1", "0.0.0.0:8001", nil)
-
-	id1 := createID("1")
-	sister := chord.NewInode(id1, "0.0.0.0:8001")
-	h, err := createNode("3", "0.0.0.0:8002", sister)
+	h, err := createNode("1", "0.0.0.0:8001", nil)
 	if err != nil {
-		log.Println(h, err)
-		return
+		log.Fatalln(err)
 	}
-
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
-	x, y = h.Find("4")
-	log.Println("found-------->", x, y)
+	<-time.After(20 * time.Second)
 	<-c
+	h.Stop()
+
 }

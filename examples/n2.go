@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"os"
 	"os/signal"
+	// "strconv"
 	"time"
 )
 
@@ -31,28 +32,38 @@ func createID(id string) []byte {
 
 func main() {
 
-	createNode("1", "0.0.0.0:8001", nil)
-
 	id1 := "1"
 	sister := chord.NewInode(id1, "0.0.0.0:8001")
-	_, err := createNode("4", "0.0.0.0:8002", sister)
+
+	h, err := createNode("4", "0.0.0.0:8002", sister)
 	if err != nil {
-		log.Println(err)
+		log.Fatalln(err)
 		return
 	}
-	h, err := createNode("8", "0.0.0.0:8003", sister)
-	if err != nil {
-		log.Println(h, err)
-		return
-	}
+
+	// shut := make(chan bool)
+	// var count int
+	// go func() {
+	// 	ticker := time.NewTicker(1 * time.Second)
+	// 	for {
+	// 		select {
+	// 		case <-ticker.C:
+	// 			count++
+	// 			key := strconv.Itoa(count)
+	// 			sErr := h.Set(key, "bleh")
+	// 			if sErr != nil {
+	// 				log.Println("err: ", sErr)
+	// 			}
+	// 		case <-shut:
+	// 			ticker.Stop()
+	// 			return
+	// 		}
+	// 	}
+	// }()
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
-	<-time.After(20 * time.Second)
-	var x *internal.Node
-	var y error
-	x, y = h.Find("3")
-	log.Println("found-------->", y)
-	log.Printf("id %x\n", x.Id)
 	<-c
+	// shut <- true
+	h.Stop()
 }

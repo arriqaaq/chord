@@ -128,7 +128,7 @@ func NewNode(cnf *Config, joinNode *internal.Node) (*Node, error) {
 	// Peridoically fix finger tables.
 	go func() {
 		next := 0
-		ticker := time.NewTicker(5 * time.Second)
+		ticker := time.NewTicker(3 * time.Second)
 		for {
 			select {
 			case <-ticker.C:
@@ -189,7 +189,7 @@ func (n *Node) hashKey(key string) ([]byte, error) {
 		return nil, err
 	}
 	val := h.Sum(nil)
-	return val, nil
+	return padID(val, n.cnf.HashSize), nil
 }
 
 func (n *Node) join(joinNode *internal.Node) error {
@@ -250,7 +250,7 @@ func (n *Node) locate(key string) (*internal.Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	fmt.Printf("find key id %s, %x\n", key, id)
+	fmt.Printf("locate key id %s, %x\n", key, id)
 	return n.findSuccessor(id)
 }
 
@@ -337,6 +337,8 @@ func (n *Node) findSuccessor(id []byte) (*internal.Node, error) {
 	if succ == nil {
 		return curr, nil
 	}
+
+	var err error
 	// fmt.Printf("id %x\n", id)
 	// fmt.Printf("curr %x\n", curr.Id)
 	// fmt.Printf("succ %x\n", succ.Id)
@@ -345,19 +347,32 @@ func (n *Node) findSuccessor(id []byte) (*internal.Node, error) {
 	// }
 
 	if betweenRightIncl(id, curr.Id, succ.Id) {
-		// fmt.Println("1ad", n.Id, id, curr.Id, succ.Id)
+		// fmt.Printf("1ad %x %x %x\n", id, curr.Id, succ.Id)
 		return succ, nil
 	} else {
 		//9ad [2] id:"\003" addr:"0.0.0.0:8002"  [3]
 		pred := n.closestPrecedingNode(id)
-		// fmt.Println("closest node ", n.Id, id, pred.Id)
+		// fmt.Printf("closest node %x %x %x \n", id, curr.Id, pred.Id)
 		/*
 			NOT SURE ABOUT THIS, RECHECK from paper!!!
 			if preceeding node and current node are the same,
 			store the key on this node
 		*/
+		// succ, err = node.getSuccessorRPC(pred)
+		// if err != nil || succ == nil {
+		// 	return pred, err
+		// }
+
 		if isEqual(pred.Id, n.Id) {
-			return curr, nil
+			succ, err = n.getSuccessorRPC(pred)
+			if err != nil {
+				return nil, err
+			}
+			if succ == nil {
+				// not able to wrap around, current node is the successor
+				return pred, nil
+			}
+			return succ, nil
 		}
 
 		succ, err := n.findSuccessorRPC(pred, id)
@@ -399,7 +414,14 @@ func (n *Node) closestPrecedingNode(id []byte) *internal.Node {
 */
 
 func (n *Node) stabilize() {
-	// fmt.Println("stabilize: ", n.Id, n.successor, n.predecessor)
+	var sid, pid []byte
+	if n.successor != nil {
+		sid = n.successor.Id
+	}
+	if n.predecessor != nil {
+		pid = n.predecessor.Id
+	}
+	fmt.Printf("stabilize: \n curr: %x \n succ: %x \n pred: %x \n", n.Node.Id, sid, pid)
 	n.succMtx.RLock()
 	succ := n.successor
 	if succ == nil {
@@ -420,30 +442,6 @@ func (n *Node) stabilize() {
 		// fmt.Println("setting successor ", n.Id, x.Id)
 	}
 	n.notifyRPC(succ, n.Node)
-}
-
-// called periodically. refreshes finger table entries.
-// next stores the index of the next finger to fix.
-func (n *Node) fixFinger(next int) int {
-	nextHash := fingerID(n.Id, next, n.cnf.HashSize)
-	succ, err := n.findSuccessor(nextHash)
-	nextNum := (next + 1) % n.cnf.HashSize
-	if err != nil || succ == nil {
-		fmt.Println("finger lookup failed", n.Id, nextHash)
-		// TODO: this will keep retrying, check what to do
-		// return next
-		return nextNum
-	}
-
-	finger := newFingerEntry(nextHash, succ)
-	n.ftMtx.Lock()
-	n.fingerTable[next] = finger
-	// for _, v := range n.fingerTable {
-	// 	fmt.Printf("finger data %x,%x,%x\n", n.Id, v.Id, v.Node.Id)
-	// }
-	n.ftMtx.Unlock()
-
-	return nextNum
 }
 
 func (n *Node) checkPredecessor() {
@@ -617,6 +615,7 @@ func (n *Node) XGet(ctx context.Context, req *internal.GetRequest) (*internal.Ge
 func (n *Node) XSet(ctx context.Context, req *internal.SetRequest) (*internal.SetResponse, error) {
 	n.stMtx.Lock()
 	defer n.stMtx.Unlock()
+	fmt.Println("setting key on ", n.Node.Addr, req.Key, req.Value)
 	err := n.storage.Set(req.Key, req.Value)
 	return emptySetResponse, err
 }
