@@ -453,7 +453,7 @@ func (n *Node) checkPredecessor() {
 	if pred != nil {
 		err := n.transport.CheckPredecessor(pred)
 		if err != nil {
-			fmt.Println("predecessor failed!")
+			fmt.Println("predecessor failed!", err)
 			n.predMtx.Lock()
 			n.predecessor = nil
 			n.predMtx.Unlock()
