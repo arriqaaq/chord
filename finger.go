@@ -65,7 +65,8 @@ func (n *Node) fixFinger(next int) int {
 	succ, err := n.findSuccessor(nextHash)
 	nextNum := (next + 1) % n.cnf.HashSize
 	if err != nil || succ == nil {
-		fmt.Println("finger lookup failed", n.Id, nextHash)
+		fmt.Println("error: ", err, succ)
+		fmt.Printf("finger lookup failed %x %x \n", n.Id, nextHash)
 		// TODO: this will keep retrying, check what to do
 		// return next
 		return nextNum

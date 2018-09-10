@@ -16,7 +16,8 @@ func DefaultConfig() *Config {
 		Hash:     sha1.New,
 		DialOpts: make([]grpc.DialOption, 0, 5),
 	}
-	n.HashSize = n.Hash().Size()
+	// n.HashSize = n.Hash().Size()
+	n.HashSize = 4
 
 	n.DialOpts = append(n.DialOpts,
 		grpc.WithBlock(),
@@ -384,6 +385,7 @@ func (n *Node) findSuccessor(id []byte) (*internal.Node, error) {
 			// not able to wrap around, current node is the successor
 			return curr, nil
 		}
+		return succ, nil
 
 	}
 	return nil, nil
