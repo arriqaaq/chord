@@ -20,7 +20,6 @@ func createNode(id string, addr string, sister *internal.Node) (*chord.Node, err
 	cnf.MaxIdle = 100 * time.Millisecond
 
 	n, err := chord.NewNode(cnf, sister)
-	// log.Println("hook", id, n, err)
 	return n, err
 }
 
@@ -32,8 +31,7 @@ func createID(id string) []byte {
 
 func main() {
 
-	id1 := "1"
-	sister := chord.NewInode(id1, "0.0.0.0:8001")
+	joinNode := chord.NewInode("1", "0.0.0.0:8001")
 
 	h, err := createNode("8", "0.0.0.0:8003", sister)
 	if err != nil {
@@ -41,31 +39,8 @@ func main() {
 		return
 	}
 
-	// shut := make(chan bool)
-	// var count int
-	// go func() {
-	// 	ticker := time.NewTicker(3 * time.Second)
-	// 	for {
-	// 		select {
-	// 		case <-ticker.C:
-	// 			count++
-	// 			key := strconv.Itoa(count)
-	// 			val, gErr := h.Get(key)
-	// 			if gErr != nil {
-	// 				log.Println("err: ", key, gErr)
-	// 			} else {
-	// 				log.Println("val: ", string(val))
-	// 			}
-	// 		case <-shut:
-	// 			ticker.Stop()
-	// 			return
-	// 		}
-	// 	}
-	// }()
-
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 	<-c
-	// shut <- true
 	h.Stop()
 }
