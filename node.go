@@ -211,7 +211,6 @@ func (n *Node) join(joinNode *internal.Node) error {
 			return ERR_NODE_EXISTS
 		}
 		foo = joinNode
-		// fmt.Println("got sister", n.Id, foo.Id)
 	} else {
 		foo = n.Node
 	}
@@ -220,7 +219,6 @@ func (n *Node) join(joinNode *internal.Node) error {
 	if err != nil {
 		return err
 	}
-	// fmt.Println("found succ for, ", n.Id, succ.Id)
 	n.succMtx.Lock()
 	n.successor = succ
 	n.succMtx.Unlock()
@@ -255,11 +253,6 @@ func (n *Node) locate(key string) (*internal.Node, error) {
 		return nil, err
 	}
 	succ, err := n.findSuccessor(id)
-
-	// cInt := (&big.Int{}).SetBytes(id)
-	// sInt := (&big.Int{}).SetBytes(succ.Id)
-
-	// fmt.Printf("locate key id %s, %d, %d\n", key, cInt, sInt)
 	return succ, err
 }
 
@@ -376,11 +369,9 @@ func (n *Node) findSuccessor(id []byte) (*internal.Node, error) {
 	var err error
 
 	if betweenRightIncl(id, curr.Id, succ.Id) {
-		// fmt.Printf("1ad %x %x %x\n", id, curr.Id, succ.Id)
 		return succ, nil
 	} else {
 		pred := n.closestPrecedingNode(id)
-		// fmt.Printf("closest node %x %x %x \n", id, curr.Id, pred.Id)
 		/*
 			NOT SURE ABOUT THIS, RECHECK from paper!!!
 			if preceeding node and current node are the same,
@@ -468,7 +459,6 @@ func (n *Node) stabilize() {
 		n.succMtx.Lock()
 		n.successor = x
 		n.succMtx.Unlock()
-		// fmt.Println("setting successor ", n.Id, x.Id)
 	}
 	n.notifyRPC(succ, n.Node)
 }
