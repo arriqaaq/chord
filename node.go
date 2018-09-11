@@ -7,6 +7,7 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"hash"
+	"math/big"
 	"sync"
 	"time"
 )
@@ -17,7 +18,7 @@ func DefaultConfig() *Config {
 		DialOpts: make([]grpc.DialOption, 0, 5),
 	}
 	// n.HashSize = n.Hash().Size()
-	n.HashSize = 4
+	n.HashSize = n.Hash().Size() * 8
 
 	n.DialOpts = append(n.DialOpts,
 		grpc.WithBlock(),
@@ -88,7 +89,9 @@ func NewNode(cnf *Config, joinNode *internal.Node) (*Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	fmt.Printf("new node id %s, %x\n", nID, id)
+	aInt := (&big.Int{}).SetBytes(id)
+
+	fmt.Printf("new node id %d, \n", aInt)
 
 	node.Node.Id = id
 	node.Node.Addr = cnf.Addr
@@ -114,7 +117,7 @@ func NewNode(cnf *Config, joinNode *internal.Node) (*Node, error) {
 
 	// Peridoically stabilize the node.
 	go func() {
-		ticker := time.NewTicker(2 * time.Second)
+		ticker := time.NewTicker(1 * time.Second)
 		for {
 			select {
 			case <-ticker.C:
@@ -129,7 +132,7 @@ func NewNode(cnf *Config, joinNode *internal.Node) (*Node, error) {
 	// Peridoically fix finger tables.
 	go func() {
 		next := 0
-		ticker := time.NewTicker(3 * time.Second)
+		ticker := time.NewTicker(100 * time.Millisecond)
 		for {
 			select {
 			case <-ticker.C:
@@ -190,7 +193,7 @@ func (n *Node) hashKey(key string) ([]byte, error) {
 		return nil, err
 	}
 	val := h.Sum(nil)
-	return padID(val, n.cnf.HashSize), nil
+	return val, nil
 }
 
 func (n *Node) join(joinNode *internal.Node) error {
@@ -251,8 +254,13 @@ func (n *Node) locate(key string) (*internal.Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	fmt.Printf("locate key id %s, %x\n", key, id)
-	return n.findSuccessor(id)
+	succ, err := n.findSuccessor(id)
+
+	// cInt := (&big.Int{}).SetBytes(id)
+	// sInt := (&big.Int{}).SetBytes(succ.Id)
+
+	// fmt.Printf("locate key id %s, %d, %d\n", key, cInt, sInt)
+	return succ, err
 }
 
 func (n *Node) get(key string) ([]byte, error) {
@@ -308,6 +316,32 @@ func (n *Node) transferKeys(pred, succ *internal.Node) {
 
 }
 
+func (n *Node) moveKeysFromLocal(pred, succ *internal.Node) {
+
+	keys, err := n.storage.Between(pred.Id, succ.Id)
+	if len(keys) > 0 {
+		fmt.Println("transfering: ", keys, succ, err)
+	}
+	delKeyList := make([]string, 0, 10)
+	// store the keys in current node
+	for _, item := range keys {
+		if item == nil {
+			continue
+		}
+		err := n.setKeyRPC(succ, item.Key, item.Value)
+		if err != nil {
+			fmt.Println("error transfering key: ", item.Key, succ.Addr)
+		}
+		delKeyList = append(delKeyList, item.Key)
+	}
+	// delete the keys from the successor node, as current node
+	// is responsible for the keys
+	if len(delKeyList) > 0 {
+		n.deleteKeys(succ, delKeyList)
+	}
+
+}
+
 func (n *Node) deleteKeys(node *internal.Node, keys []string) error {
 	return n.deleteKeysRPC(node, keys)
 }
@@ -340,18 +374,11 @@ func (n *Node) findSuccessor(id []byte) (*internal.Node, error) {
 	}
 
 	var err error
-	// fmt.Printf("id %x\n", id)
-	// fmt.Printf("curr %x\n", curr.Id)
-	// fmt.Printf("succ %x\n", succ.Id)
-	// if n.predecessor != nil {
-	// 	fmt.Printf("pred %x\n", n.predecessor.Id)
-	// }
 
 	if betweenRightIncl(id, curr.Id, succ.Id) {
 		// fmt.Printf("1ad %x %x %x\n", id, curr.Id, succ.Id)
 		return succ, nil
 	} else {
-		//9ad [2] id:"\003" addr:"0.0.0.0:8002"  [3]
 		pred := n.closestPrecedingNode(id)
 		// fmt.Printf("closest node %x %x %x \n", id, curr.Id, pred.Id)
 		/*
@@ -359,10 +386,6 @@ func (n *Node) findSuccessor(id []byte) (*internal.Node, error) {
 			if preceeding node and current node are the same,
 			store the key on this node
 		*/
-		// succ, err = node.getSuccessorRPC(pred)
-		// if err != nil || succ == nil {
-		// 	return pred, err
-		// }
 
 		if isEqual(pred.Id, n.Id) {
 			succ, err = n.getSuccessorRPC(pred)
@@ -416,14 +439,18 @@ func (n *Node) closestPrecedingNode(id []byte) *internal.Node {
 */
 
 func (n *Node) stabilize() {
-	var sid, pid []byte
-	if n.successor != nil {
-		sid = n.successor.Id
-	}
-	if n.predecessor != nil {
-		pid = n.predecessor.Id
-	}
-	fmt.Printf("stabilize: \n curr: %x \n succ: %x \n pred: %x \n", n.Node.Id, sid, pid)
+	// var sid, pid []byte
+	// if n.successor != nil {
+	// 	sid = n.successor.Id
+	// }
+	// if n.predecessor != nil {
+	// 	pid = n.predecessor.Id
+	// }
+	// cInt := (&big.Int{}).SetBytes(n.Node.Id)
+	// sInt := (&big.Int{}).SetBytes(sid)
+	// pInt := (&big.Int{}).SetBytes(pid)
+
+	// fmt.Printf("stabilize: \n curr: %d \n succ: %d \n pred: %d \n", cInt, sInt, pInt)
 	n.succMtx.RLock()
 	succ := n.successor
 	if succ == nil {
@@ -661,9 +688,10 @@ func (n *Node) Stop() {
 	n.predMtx.RUnlock()
 
 	if n.Node.Addr != succ.Addr && pred != nil {
-		n.transferKeys(pred, succ)
-		n.setPredecessorRPC(succ, pred)
-		n.setSuccessorRPC(pred, succ)
+		n.moveKeysFromLocal(pred, succ)
+		predErr := n.setPredecessorRPC(succ, pred)
+		succErr := n.setSuccessorRPC(pred, succ)
+		fmt.Println("stop errors: ", predErr, succErr)
 	}
 
 	n.transport.Stop()

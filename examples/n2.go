@@ -7,7 +7,7 @@ import (
 	"math/big"
 	"os"
 	"os/signal"
-	// "strconv"
+	"strconv"
 	"time"
 )
 
@@ -41,29 +41,29 @@ func main() {
 		return
 	}
 
-	// shut := make(chan bool)
-	// var count int
-	// go func() {
-	// 	ticker := time.NewTicker(1 * time.Second)
-	// 	for {
-	// 		select {
-	// 		case <-ticker.C:
-	// 			count++
-	// 			key := strconv.Itoa(count)
-	// 			sErr := h.Set(key, "bleh")
-	// 			if sErr != nil {
-	// 				log.Println("err: ", sErr)
-	// 			}
-	// 		case <-shut:
-	// 			ticker.Stop()
-	// 			return
-	// 		}
-	// 	}
-	// }()
+	shut := make(chan bool)
+	var count int
+	go func() {
+		ticker := time.NewTicker(1 * time.Second)
+		for {
+			select {
+			case <-ticker.C:
+				count++
+				key := strconv.Itoa(count)
+				sErr := h.Set(key, "bleh")
+				if sErr != nil {
+					log.Println("err: ", sErr)
+				}
+			case <-shut:
+				ticker.Stop()
+				return
+			}
+		}
+	}()
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 	<-c
-	// shut <- true
+	shut <- true
 	h.Stop()
 }

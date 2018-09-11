@@ -1,6 +1,7 @@
 package chord
 
 import (
+	"strconv"
 	"testing"
 	"time"
 )
@@ -67,6 +68,20 @@ func Test_randStabilize(t *testing.T) {
 	}
 }
 
+func TestRL(t *testing.T) {
+	t.Parallel()
+
+	min := GetHashID("0.0.0.0:8081")
+	max := GetHashID("0.0.0.0:8083")
+	for i := 2; i < 100; i++ {
+		val := strconv.Itoa(i)
+		key := GetHashID(val)
+		if got := betweenRightIncl(key, min, max); got != true {
+			t.Errorf("betweenRightIncl() %s %x = %v, want %v", val, key, got, true)
+		}
+	}
+}
+
 func Test_betweenRightIncl(t *testing.T) {
 	t.Parallel()
 
@@ -84,6 +99,16 @@ func Test_betweenRightIncl(t *testing.T) {
 		{"2", args{[]byte{1, 1, 1, 1}, []byte{1, 1, 1, 0}, []byte{1, 1, 1, 1}}, true},
 		{"3", args{[]byte{1, 1, 1, 1, 1}, []byte{0}, []byte{1, 1, 1, 1}}, false},
 		{"4", args{[]byte{1, 1, 1, 1, 1}, []byte{0}, []byte{1, 1, 1, 1, 1, 1}}, true},
+		{
+			"5",
+			args{
+				[]byte{4, 40, 171},
+				[]byte{53, 106, 25, 43, 121, 19, 176, 76, 84, 87, 77, 24, 194, 141, 70, 230, 57, 84, 40, 171},
+				[]byte{4, 40, 171},
+			},
+			true,
+		},
+		{"6", args{GetHashID("11"), GetHashID("1"), GetHashID("20")}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

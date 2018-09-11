@@ -34,7 +34,7 @@ func (a *mapStore) hashKey(key string) ([]byte, error) {
 		return nil, err
 	}
 	val := h.Sum(nil)
-	return padID(val, h.Size()), nil
+	return val, nil
 }
 
 func (a *mapStore) Get(key string) ([]byte, error) {

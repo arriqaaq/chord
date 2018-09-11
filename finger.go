@@ -35,8 +35,7 @@ func newFingerEntry(id []byte, node *internal.Node) *fingerEntry {
 func fingerID(n []byte, i int, m int) []byte {
 
 	// Convert the ID to a bigint
-	idInt := big.Int{}
-	idInt.SetBytes(n)
+	idInt := (&big.Int{}).SetBytes(n)
 
 	// Get the offset
 	two := big.NewInt(2)
@@ -45,7 +44,7 @@ func fingerID(n []byte, i int, m int) []byte {
 
 	// Sum
 	sum := big.Int{}
-	sum.Add(&idInt, &offset)
+	sum.Add(idInt, &offset)
 
 	// Get the ceiling
 	ceil := big.Int{}
@@ -55,7 +54,7 @@ func fingerID(n []byte, i int, m int) []byte {
 	idInt.Mod(&sum, &ceil)
 
 	// Add together
-	return padID(idInt.Bytes(), m)
+	return idInt.Bytes()
 }
 
 // called periodically. refreshes finger table entries.
@@ -67,15 +66,18 @@ func (n *Node) fixFinger(next int) int {
 	if err != nil || succ == nil {
 		fmt.Println("error: ", err, succ)
 		fmt.Printf("finger lookup failed %x %x \n", n.Id, nextHash)
-		// TODO: this will keep retrying, check what to do
-		// return next
+		// TODO: Check how to handle retry, passing ahead for now
 		return nextNum
 	}
 
 	finger := newFingerEntry(nextHash, succ)
 	n.ftMtx.Lock()
 	n.fingerTable[next] = finger
-	// fmt.Printf("finger entry %x,%x,%x\n", n.Id, nextHash, succ.Id)
+
+	// aInt := (&big.Int{}).SetBytes(nextHash)
+	// bInt := (&big.Int{}).SetBytes(finger.Node.Id)
+	// fmt.Printf("finger entry %d, %d,%d\n", next, aInt, bInt)
+
 	n.ftMtx.Unlock()
 
 	return nextNum

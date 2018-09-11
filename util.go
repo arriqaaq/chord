@@ -54,15 +54,3 @@ func GetHashID(key string) []byte {
 	val := h.Sum(nil)
 	return val
 }
-
-func padID(id []byte, m int) []byte {
-	n := m - len(id)
-	if n < 0 {
-		n = 0
-	}
-
-	_id := make([]byte, n)
-	id = append(_id, id...)
-
-	return id[:m]
-}

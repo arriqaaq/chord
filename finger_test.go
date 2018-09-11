@@ -4,6 +4,7 @@ import (
 	"crypto/sha1"
 	"fmt"
 	"github.com/arriqaaq/chord/internal"
+	"math/big"
 	"reflect"
 	"testing"
 )
@@ -12,6 +13,18 @@ func TestNewFingerTable(t *testing.T) {
 	g := newFingerTable(NewInode("8", "0.0.0.0:8003"), sha1.New().Size())
 	for i, j := range g {
 		fmt.Printf("%d, %x, %x\n", i, j.Id, j.Node.Id)
+	}
+}
+
+func TestNewFingerEntry(t *testing.T) {
+	hashSize := sha1.New().Size() * 8
+	id := GetHashID("0.0.0.0:8083")
+	xInt := (&big.Int{}).SetBytes(id)
+	for i := 0; i < 100; i++ {
+		nextHash := fingerID(id, i, hashSize)
+		aInt := (&big.Int{}).SetBytes(nextHash)
+
+		fmt.Printf("%d, %d %d\n", xInt, aInt, hashSize)
 	}
 }
 
