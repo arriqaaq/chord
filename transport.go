@@ -205,9 +205,6 @@ func (g *GrpcTransport) reapOld() {
 		select {
 		case <-ticker.C:
 			g.reap()
-			// case <-node.shutdownCh:
-			// 	ticker.Stop()
-			// 	return
 		}
 
 	}

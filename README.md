@@ -14,10 +14,8 @@ import (
 	"github.com/arriqaaq/chord"
 	"github.com/arriqaaq/chord/internal"
 	"log"
-	"math/big"
 	"os"
 	"os/signal"
-	// "strconv"
 	"time"
 )
 
@@ -33,11 +31,6 @@ func createNode(id string, addr string, sister *internal.Node) (*chord.Node, err
 	return n, err
 }
 
-func createID(id string) []byte {
-	val := big.NewInt(0)
-	val.SetString(id, 10)
-	return val.Bytes()
-}
 
 func main() {
 
