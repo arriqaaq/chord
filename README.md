@@ -19,7 +19,7 @@ import (
 	"time"
 )
 
-func createNode(id string, addr string, sister *internal.Node) (*chord.Node, error) {
+func createNode(id string, addr string, joinNode *internal.Node) (*chord.Node, error) {
 
 	cnf := chord.DefaultConfig()
 	cnf.Id = id
@@ -27,7 +27,7 @@ func createNode(id string, addr string, sister *internal.Node) (*chord.Node, err
 	cnf.Timeout = 10 * time.Millisecond
 	cnf.MaxIdle = 100 * time.Millisecond
 
-	n, err := chord.NewNode(cnf, sister)
+	n, err := chord.NewNode(cnf, joinNode)
 	return n, err
 }
 
@@ -36,7 +36,7 @@ func main() {
 
 	joinNode := chord.NewInode("1", "0.0.0.0:8001")
 
-	h, err := createNode("8", "0.0.0.0:8003", sister)
+	h, err := createNode("8", "0.0.0.0:8003", joinNode)
 	if err != nil {
 		log.Fatalln(err)
 		return
