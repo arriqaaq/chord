@@ -33,7 +33,7 @@ func main() {
 
 	joinNode := chord.NewInode("1", "0.0.0.0:8001")
 
-	h, err := createNode("8", "0.0.0.0:8003", sister)
+	h, err := createNode("8", "0.0.0.0:8003", joinNode)
 	if err != nil {
 		log.Fatalln(err)
 		return

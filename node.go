@@ -430,18 +430,7 @@ func (n *Node) closestPrecedingNode(id []byte) *internal.Node {
 */
 
 func (n *Node) stabilize() {
-	// var sid, pid []byte
-	// if n.successor != nil {
-	// 	sid = n.successor.Id
-	// }
-	// if n.predecessor != nil {
-	// 	pid = n.predecessor.Id
-	// }
-	// cInt := (&big.Int{}).SetBytes(n.Node.Id)
-	// sInt := (&big.Int{}).SetBytes(sid)
-	// pInt := (&big.Int{}).SetBytes(pid)
 
-	// fmt.Printf("stabilize: \n curr: %d \n succ: %d \n pred: %d \n", cInt, sInt, pInt)
 	n.succMtx.RLock()
 	succ := n.successor
 	if succ == nil {
