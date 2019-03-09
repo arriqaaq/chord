@@ -3,7 +3,7 @@ package chord
 import (
 	"crypto/sha1"
 	"fmt"
-	"github.com/arriqaaq/chord/internal"
+	"github.com/arriqaaq/chord/models"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"hash"
@@ -51,14 +51,14 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-func NewInode(id string, addr string) *internal.Node {
+func NewInode(id string, addr string) *models.Node {
 	h := sha1.New()
 	if _, err := h.Write([]byte(id)); err != nil {
 		return nil
 	}
 	val := h.Sum(nil)
 
-	return &internal.Node{
+	return &models.Node{
 		Id:   val,
 		Addr: addr,
 	}
@@ -68,12 +68,12 @@ func NewInode(id string, addr string) *internal.Node {
 	NewNode creates a new Chord node. Returns error if node already
 	exists in the chord ring
 */
-func NewNode(cnf *Config, joinNode *internal.Node) (*Node, error) {
+func NewNode(cnf *Config, joinNode *models.Node) (*Node, error) {
 	if err := cnf.Validate(); err != nil {
 		return nil, err
 	}
 	node := &Node{
-		Node:       new(internal.Node),
+		Node:       new(models.Node),
 		shutdownCh: make(chan struct{}),
 		cnf:        cnf,
 		storage:    NewMapStore(cnf.Hash),
@@ -107,7 +107,7 @@ func NewNode(cnf *Config, joinNode *internal.Node) (*Node, error) {
 
 	node.transport = transport
 
-	internal.RegisterChordServer(transport.server, node)
+	models.RegisterChordServer(transport.server, node)
 
 	node.transport.Start()
 
@@ -163,14 +163,14 @@ func NewNode(cnf *Config, joinNode *internal.Node) (*Node, error) {
 }
 
 type Node struct {
-	*internal.Node
+	*models.Node
 
 	cnf *Config
 
-	predecessor *internal.Node
+	predecessor *models.Node
 	predMtx     sync.RWMutex
 
-	successor *internal.Node
+	successor *models.Node
 	succMtx   sync.RWMutex
 
 	shutdownCh chan struct{}
@@ -196,10 +196,10 @@ func (n *Node) hashKey(key string) ([]byte, error) {
 	return val, nil
 }
 
-func (n *Node) join(joinNode *internal.Node) error {
+func (n *Node) join(joinNode *models.Node) error {
 	// First check if node already present in the circle
 	// Join this node to the same chord ring as parent
-	var foo *internal.Node
+	var foo *models.Node
 	// // Ask if our id already exists on the ring.
 	if joinNode != nil {
 		remoteNode, err := n.findSuccessorRPC(joinNode, n.Id)
@@ -230,7 +230,7 @@ func (n *Node) join(joinNode *internal.Node) error {
 	Public storage implementation
 */
 
-func (n *Node) Find(key string) (*internal.Node, error) {
+func (n *Node) Find(key string) (*models.Node, error) {
 	return n.locate(key)
 }
 
@@ -247,7 +247,7 @@ func (n *Node) Delete(key string) error {
 /*
 	Finds the node for the key
 */
-func (n *Node) locate(key string) (*internal.Node, error) {
+func (n *Node) locate(key string) (*models.Node, error) {
 	id, err := n.hashKey(key)
 	if err != nil {
 		return nil, err
@@ -286,7 +286,7 @@ func (n *Node) delete(key string) error {
 	return err
 }
 
-func (n *Node) transferKeys(pred, succ *internal.Node) {
+func (n *Node) transferKeys(pred, succ *models.Node) {
 
 	keys, err := n.requestKeys(pred, succ)
 	if len(keys) > 0 {
@@ -309,7 +309,7 @@ func (n *Node) transferKeys(pred, succ *internal.Node) {
 
 }
 
-func (n *Node) moveKeysFromLocal(pred, succ *internal.Node) {
+func (n *Node) moveKeysFromLocal(pred, succ *models.Node) {
 
 	keys, err := n.storage.Between(pred.Id, succ.Id)
 	if len(keys) > 0 {
@@ -335,12 +335,12 @@ func (n *Node) moveKeysFromLocal(pred, succ *internal.Node) {
 
 }
 
-func (n *Node) deleteKeys(node *internal.Node, keys []string) error {
+func (n *Node) deleteKeys(node *models.Node, keys []string) error {
 	return n.deleteKeysRPC(node, keys)
 }
 
 // When a new node joins, it requests keys from it's successor
-func (n *Node) requestKeys(pred, succ *internal.Node) ([]*internal.KV, error) {
+func (n *Node) requestKeys(pred, succ *models.Node) ([]*models.KV, error) {
 
 	if isEqual(n.Id, succ.Id) {
 		return nil, nil
@@ -355,7 +355,7 @@ func (n *Node) requestKeys(pred, succ *internal.Node) ([]*internal.KV, error) {
 	First check if key present in local table, if not
 	then look for how to travel in the ring
 */
-func (n *Node) findSuccessor(id []byte) (*internal.Node, error) {
+func (n *Node) findSuccessor(id []byte) (*models.Node, error) {
 	// Check if lock is needed throughout the process
 	n.succMtx.RLock()
 	defer n.succMtx.RUnlock()
@@ -406,7 +406,7 @@ func (n *Node) findSuccessor(id []byte) (*internal.Node, error) {
 }
 
 // Fig 5 implementation for closest_preceding_node
-func (n *Node) closestPrecedingNode(id []byte) *internal.Node {
+func (n *Node) closestPrecedingNode(id []byte) *models.Node {
 	n.predMtx.RLock()
 	defer n.predMtx.RUnlock()
 
@@ -474,53 +474,53 @@ func (n *Node) checkPredecessor() {
 */
 
 // getSuccessorRPC the successor ID of a remote node.
-func (n *Node) getSuccessorRPC(node *internal.Node) (*internal.Node, error) {
+func (n *Node) getSuccessorRPC(node *models.Node) (*models.Node, error) {
 	return n.transport.GetSuccessor(node)
 }
 
 // setSuccessorRPC sets the successor of a given node.
-func (n *Node) setSuccessorRPC(node *internal.Node, succ *internal.Node) error {
+func (n *Node) setSuccessorRPC(node *models.Node, succ *models.Node) error {
 	return n.transport.SetSuccessor(node, succ)
 }
 
 // findSuccessorRPC finds the successor node of a given ID in the entire ring.
-func (n *Node) findSuccessorRPC(node *internal.Node, id []byte) (*internal.Node, error) {
+func (n *Node) findSuccessorRPC(node *models.Node, id []byte) (*models.Node, error) {
 	return n.transport.FindSuccessor(node, id)
 }
 
 // getSuccessorRPC the successor ID of a remote node.
-func (n *Node) getPredecessorRPC(node *internal.Node) (*internal.Node, error) {
+func (n *Node) getPredecessorRPC(node *models.Node) (*models.Node, error) {
 	return n.transport.GetPredecessor(node)
 }
 
 // setPredecessorRPC sets the predecessor of a given node.
-func (n *Node) setPredecessorRPC(node *internal.Node, pred *internal.Node) error {
+func (n *Node) setPredecessorRPC(node *models.Node, pred *models.Node) error {
 	return n.transport.SetPredecessor(node, pred)
 }
 
 // notifyRPC notifies a remote node that pred is its predecessor.
-func (n *Node) notifyRPC(node, pred *internal.Node) error {
+func (n *Node) notifyRPC(node, pred *models.Node) error {
 	return n.transport.Notify(node, pred)
 }
 
-func (n *Node) getKeyRPC(node *internal.Node, key string) (*internal.GetResponse, error) {
+func (n *Node) getKeyRPC(node *models.Node, key string) (*models.GetResponse, error) {
 	return n.transport.GetKey(node, key)
 }
-func (n *Node) setKeyRPC(node *internal.Node, key, value string) error {
+func (n *Node) setKeyRPC(node *models.Node, key, value string) error {
 	return n.transport.SetKey(node, key, value)
 }
-func (n *Node) deleteKeyRPC(node *internal.Node, key string) error {
+func (n *Node) deleteKeyRPC(node *models.Node, key string) error {
 	return n.transport.DeleteKey(node, key)
 }
 
 func (n *Node) requestKeysRPC(
-	node *internal.Node, from []byte, to []byte,
-) ([]*internal.KV, error) {
+	node *models.Node, from []byte, to []byte,
+) ([]*models.KV, error) {
 	return n.transport.RequestKeys(node, from, to)
 }
 
 func (n *Node) deleteKeysRPC(
-	node *internal.Node, keys []string,
+	node *models.Node, keys []string,
 ) error {
 	return n.transport.DeleteKeys(node, keys)
 }
@@ -530,7 +530,7 @@ func (n *Node) deleteKeysRPC(
 */
 
 // GetSuccessor gets the successor on the node..
-func (n *Node) GetSuccessor(ctx context.Context, r *internal.ER) (*internal.Node, error) {
+func (n *Node) GetSuccessor(ctx context.Context, r *models.ER) (*models.Node, error) {
 	n.succMtx.RLock()
 	succ := n.successor
 	n.succMtx.RUnlock()
@@ -542,7 +542,7 @@ func (n *Node) GetSuccessor(ctx context.Context, r *internal.ER) (*internal.Node
 }
 
 // SetSuccessor sets the successor on the node..
-func (n *Node) SetSuccessor(ctx context.Context, succ *internal.Node) (*internal.ER, error) {
+func (n *Node) SetSuccessor(ctx context.Context, succ *models.Node) (*models.ER, error) {
 	n.succMtx.Lock()
 	n.successor = succ
 	n.succMtx.Unlock()
@@ -550,14 +550,14 @@ func (n *Node) SetSuccessor(ctx context.Context, succ *internal.Node) (*internal
 }
 
 // SetPredecessor sets the predecessor on the node..
-func (n *Node) SetPredecessor(ctx context.Context, pred *internal.Node) (*internal.ER, error) {
+func (n *Node) SetPredecessor(ctx context.Context, pred *models.Node) (*models.ER, error) {
 	n.predMtx.Lock()
 	n.predecessor = pred
 	n.predMtx.Unlock()
 	return emptyRequest, nil
 }
 
-func (n *Node) FindSuccessor(ctx context.Context, id *internal.ID) (*internal.Node, error) {
+func (n *Node) FindSuccessor(ctx context.Context, id *models.ID) (*models.Node, error) {
 	succ, err := n.findSuccessor(id.Id)
 	if err != nil {
 		return nil, err
@@ -571,11 +571,11 @@ func (n *Node) FindSuccessor(ctx context.Context, id *internal.ID) (*internal.No
 
 }
 
-func (n *Node) CheckPredecessor(ctx context.Context, id *internal.ID) (*internal.ER, error) {
+func (n *Node) CheckPredecessor(ctx context.Context, id *models.ID) (*models.ER, error) {
 	return emptyRequest, nil
 }
 
-func (n *Node) GetPredecessor(ctx context.Context, r *internal.ER) (*internal.Node, error) {
+func (n *Node) GetPredecessor(ctx context.Context, r *models.ER) (*models.Node, error) {
 	n.predMtx.RLock()
 	pred := n.predecessor
 	n.predMtx.RUnlock()
@@ -585,10 +585,10 @@ func (n *Node) GetPredecessor(ctx context.Context, r *internal.ER) (*internal.No
 	return pred, nil
 }
 
-func (n *Node) Notify(ctx context.Context, node *internal.Node) (*internal.ER, error) {
+func (n *Node) Notify(ctx context.Context, node *models.Node) (*models.ER, error) {
 	n.predMtx.Lock()
 	defer n.predMtx.Unlock()
-	var prevPredNode *internal.Node
+	var prevPredNode *models.Node
 
 	pred := n.predecessor
 	if pred == nil || between(node.Id, pred.Id, n.Id) {
@@ -610,17 +610,17 @@ func (n *Node) Notify(ctx context.Context, node *internal.Node) (*internal.ER, e
 	return emptyRequest, nil
 }
 
-func (n *Node) XGet(ctx context.Context, req *internal.GetRequest) (*internal.GetResponse, error) {
+func (n *Node) XGet(ctx context.Context, req *models.GetRequest) (*models.GetResponse, error) {
 	n.stMtx.RLock()
 	defer n.stMtx.RUnlock()
 	val, err := n.storage.Get(req.Key)
 	if err != nil {
 		return emptyGetResponse, err
 	}
-	return &internal.GetResponse{Value: val}, nil
+	return &models.GetResponse{Value: val}, nil
 }
 
-func (n *Node) XSet(ctx context.Context, req *internal.SetRequest) (*internal.SetResponse, error) {
+func (n *Node) XSet(ctx context.Context, req *models.SetRequest) (*models.SetResponse, error) {
 	n.stMtx.Lock()
 	defer n.stMtx.Unlock()
 	fmt.Println("setting key on ", n.Node.Addr, req.Key, req.Value)
@@ -628,24 +628,24 @@ func (n *Node) XSet(ctx context.Context, req *internal.SetRequest) (*internal.Se
 	return emptySetResponse, err
 }
 
-func (n *Node) XDelete(ctx context.Context, req *internal.DeleteRequest) (*internal.DeleteResponse, error) {
+func (n *Node) XDelete(ctx context.Context, req *models.DeleteRequest) (*models.DeleteResponse, error) {
 	n.stMtx.Lock()
 	defer n.stMtx.Unlock()
 	err := n.storage.Delete(req.Key)
 	return emptyDeleteResponse, err
 }
 
-func (n *Node) XRequestKeys(ctx context.Context, req *internal.RequestKeysRequest) (*internal.RequestKeysResponse, error) {
+func (n *Node) XRequestKeys(ctx context.Context, req *models.RequestKeysRequest) (*models.RequestKeysResponse, error) {
 	n.stMtx.RLock()
 	defer n.stMtx.RUnlock()
 	val, err := n.storage.Between(req.From, req.To)
 	if err != nil {
 		return emptyRequestKeysResponse, err
 	}
-	return &internal.RequestKeysResponse{Values: val}, nil
+	return &models.RequestKeysResponse{Values: val}, nil
 }
 
-func (n *Node) XMultiDelete(ctx context.Context, req *internal.MultiDeleteRequest) (*internal.DeleteResponse, error) {
+func (n *Node) XMultiDelete(ctx context.Context, req *models.MultiDeleteRequest) (*models.DeleteResponse, error) {
 	n.stMtx.Lock()
 	defer n.stMtx.Unlock()
 	err := n.storage.MDelete(req.Keys...)

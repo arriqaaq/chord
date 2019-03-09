@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/arriqaaq/chord/internal"
+	"github.com/arriqaaq/chord/models"
 )
 
 func TestNewMapStore(t *testing.T) {
@@ -170,7 +170,7 @@ func Test_mapStore_Between(t *testing.T) {
 		name    string
 		fields  fields
 		args    args
-		want    []*internal.KV
+		want    []*models.KV
 		wantErr bool
 	}{
 		// TODO: Add test cases.

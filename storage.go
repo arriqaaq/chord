@@ -2,7 +2,7 @@ package chord
 
 import (
 	// "errors"
-	"github.com/arriqaaq/chord/internal"
+	"github.com/arriqaaq/chord/models"
 	"hash"
 	// "math/big"
 )
@@ -11,7 +11,7 @@ type Storage interface {
 	Get(string) ([]byte, error)
 	Set(string, string) error
 	Delete(string) error
-	Between([]byte, []byte) ([]*internal.KV, error)
+	Between([]byte, []byte) ([]*models.KV, error)
 	MDelete(...string) error
 }
 
@@ -55,15 +55,15 @@ func (a *mapStore) Delete(key string) error {
 	return nil
 }
 
-func (a *mapStore) Between(from []byte, to []byte) ([]*internal.KV, error) {
-	vals := make([]*internal.KV, 0, 10)
+func (a *mapStore) Between(from []byte, to []byte) ([]*models.KV, error) {
+	vals := make([]*models.KV, 0, 10)
 	for k, v := range a.data {
 		hashedKey, err := a.hashKey(k)
 		if err != nil {
 			continue
 		}
 		if betweenRightIncl(hashedKey, from, to) {
-			pair := &internal.KV{
+			pair := &models.KV{
 				Key:   k,
 				Value: v,
 			}

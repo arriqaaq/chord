@@ -3,7 +3,7 @@ package chord
 import (
 	"crypto/sha1"
 	"fmt"
-	"github.com/arriqaaq/chord/internal"
+	"github.com/arriqaaq/chord/models"
 	"math/big"
 	"reflect"
 	"testing"
@@ -30,7 +30,7 @@ func TestNewFingerEntry(t *testing.T) {
 
 func Test_newFingerTable(t *testing.T) {
 	type args struct {
-		node *internal.Node
+		node *models.Node
 		m    int
 	}
 	tests := []struct {
@@ -53,7 +53,7 @@ func Test_newFingerTable(t *testing.T) {
 func Test_newFingerEntry(t *testing.T) {
 	type args struct {
 		id   []byte
-		node *internal.Node
+		node *models.Node
 	}
 	tests := []struct {
 		name string
