@@ -2,7 +2,7 @@ package main
 
 import (
 	"github.com/arriqaaq/chord"
-	"github.com/arriqaaq/chord/internal"
+	"github.com/arriqaaq/chord/models"
 	"log"
 	"math/big"
 	"os"
@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-func createNode(id string, addr string, sister *internal.Node) (*chord.Node, error) {
+func createNode(id string, addr string, sister *models.Node) (*chord.Node, error) {
 
 	cnf := chord.DefaultConfig()
 	cnf.Id = id
