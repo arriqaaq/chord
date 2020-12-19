@@ -12,17 +12,20 @@ service Chord {
     rpc GetSuccessor(ER) returns (Node);
     // Notify notifies Chord that Node thinks it is our predecessor. This has
     // the potential to initiate the transferring of keys.
+    // 通知后继节点本节点为其前置节点
     rpc Notify(Node) returns (ER);
     // FindSuccessor finds the node the succedes ID. May initiate RPC calls to
     // other nodes.
     rpc FindSuccessor(ID) returns (Node);
     // CheckPredecessor checkes whether predecessor has failed.
+    // 检查前置节点是否failed
     rpc CheckPredecessor(ID) returns (ER);
     // SetPredecessor sets predecessor for a node.
     rpc SetPredecessor(Node) returns (ER);
     // SetPredecessor sets predecessor for a node.
     rpc SetSuccessor(Node) returns (ER);
 
+    // 往chord环上读、增、删数据
     // Get returns the value in Chord ring for the given key.
     rpc XGet(GetRequest) returns (GetResponse);
     // Set writes a key value pair to the Chord ring.
@@ -38,6 +41,7 @@ service Chord {
 
 
 // Node contains a node ID and address.
+// ID即为hash后的值，address为通信地址
 message Node {
     bytes id = 1;
     string addr = 2;

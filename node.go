@@ -3,13 +3,14 @@ package chord
 import (
 	"crypto/sha1"
 	"fmt"
-	"github.com/arriqaaq/chord/models"
-	"golang.org/x/net/context"
-	"google.golang.org/grpc"
 	"hash"
 	"math/big"
 	"sync"
 	"time"
+
+	"github.com/arriqaaq/chord/models"
+	"golang.org/x/net/context"
+	"google.golang.org/grpc"
 )
 
 func DefaultConfig() *Config {
@@ -29,6 +30,7 @@ func DefaultConfig() *Config {
 	return n
 }
 
+// 一个Node一个Config
 type Config struct {
 	Id   string
 	Addr string
@@ -46,11 +48,13 @@ type Config struct {
 	MaxIdle time.Duration
 }
 
+// hashsize是finger表的记录个数。。。
 func (c *Config) Validate() error {
-	// hashsize shouldnt be less than hash func size
+	// hashsize shouldnt be less than hash func size？？？
 	return nil
 }
 
+//新建单个节点
 func NewInode(id string, addr string) *models.Node {
 	h := sha1.New()
 	if _, err := h.Write([]byte(id)); err != nil {
@@ -68,6 +72,7 @@ func NewInode(id string, addr string) *models.Node {
 	NewNode creates a new Chord node. Returns error if node already
 	exists in the chord ring
 */
+//将单个节点(models.Node)按配置构造环上的节点(Node)，并加入chord环，启动该节点
 func NewNode(cnf *Config, joinNode *models.Node) (*Node, error) {
 	if err := cnf.Validate(); err != nil {
 		return nil, err
@@ -111,6 +116,7 @@ func NewNode(cnf *Config, joinNode *models.Node) (*Node, error) {
 
 	node.transport.Start()
 
+	// 找到joinNode的后继节点succ
 	if err := node.join(joinNode); err != nil {
 		return nil, err
 	}
@@ -162,6 +168,15 @@ func NewNode(cnf *Config, joinNode *models.Node) (*Node, error) {
 	return node, nil
 }
 
+// Go语言类型内嵌和结构体内嵌
+// 外层结构体通过 outer.in1 直接进入内层结构体的字段，内嵌结构体甚至可以来自其他包。内层结构体被简单的插入或者内嵌进外层结构体。这个简单的“继承”机制提供了一种方式，使得可以从另外一个或一些类型继承部分或全部实现。
+// 此处的Node为chord环上的节点，而protocal buffer中定义的Node为单个节点
+
+// message Node {
+//     bytes id = 1;
+//     string addr = 2;
+// }
+
 type Node struct {
 	*models.Node
 
@@ -196,6 +211,8 @@ func (n *Node) hashKey(key string) ([]byte, error) {
 	return val, nil
 }
 
+// n.findSuccessorRPC(joinNode, n.Id)？？？
+// 把joinnode加入环？？？
 func (n *Node) join(joinNode *models.Node) error {
 	// First check if node already present in the circle
 	// Join this node to the same chord ring as parent
@@ -227,7 +244,20 @@ func (n *Node) join(joinNode *models.Node) error {
 }
 
 /*
+	RPC流程：
+
+	Client本地调用 ->
+	node.go中对transport.go中RPC方法的封装 ->
+	transport.go中的RPC方法 ->
+	(网络传输)
+	transport.go中的RPC方法 ->
+	Server端对应函数 ->
+	(返回)
+*/
+
+/*
 	Public storage implementation
+	Client本地调用
 */
 
 func (n *Node) Find(key string) (*models.Node, error) {
@@ -286,6 +316,7 @@ func (n *Node) delete(key string) error {
 	return err
 }
 
+// 将pred和succ节点之间的键值对转移给当前节点？不加判断？？？感觉不对
 func (n *Node) transferKeys(pred, succ *models.Node) {
 
 	keys, err := n.requestKeys(pred, succ)
@@ -309,6 +340,7 @@ func (n *Node) transferKeys(pred, succ *models.Node) {
 
 }
 
+// 实现Node删除时将Node上的所有数据转移给其successor？？？逻辑不对
 func (n *Node) moveKeysFromLocal(pred, succ *models.Node) {
 
 	keys, err := n.storage.Between(pred.Id, succ.Id)
@@ -340,6 +372,7 @@ func (n *Node) deleteKeys(node *models.Node, keys []string) error {
 }
 
 // When a new node joins, it requests keys from it's successor
+// 返回pred到succ之间所有键值对
 func (n *Node) requestKeys(pred, succ *models.Node) ([]*models.KV, error) {
 
 	if isEqual(n.Id, succ.Id) {
@@ -355,6 +388,8 @@ func (n *Node) requestKeys(pred, succ *models.Node) ([]*models.KV, error) {
 	First check if key present in local table, if not
 	then look for how to travel in the ring
 */
+
+// 在finger表中找键值对应该放在哪个节点时，每次找到hash值包括节点hash的区间，取左边界hash映射的的节点，线判断键值对hash值是否在该节点到其后继节点之间：若是，则放后继节点；若否，则？？？感觉逻辑不对
 func (n *Node) findSuccessor(id []byte) (*models.Node, error) {
 	// Check if lock is needed throughout the process
 	n.succMtx.RLock()
@@ -373,7 +408,7 @@ func (n *Node) findSuccessor(id []byte) (*models.Node, error) {
 	} else {
 		pred := n.closestPrecedingNode(id)
 		/*
-			NOT SURE ABOUT THIS, RECHECK from paper!!!
+			NOT SURE ABOUT THIS, RECHECK from paper!!!？？？
 			if preceeding node and current node are the same,
 			store the key on this node
 		*/
@@ -406,6 +441,7 @@ func (n *Node) findSuccessor(id []byte) (*models.Node, error) {
 }
 
 // Fig 5 implementation for closest_preceding_node
+// 返回当前节点finger表中不小于键值对hash值的最小id映射的节点？？？(找存储该键值对的节点的过程)
 func (n *Node) closestPrecedingNode(id []byte) *models.Node {
 	n.predMtx.RLock()
 	defer n.predMtx.RUnlock()
@@ -428,7 +464,10 @@ func (n *Node) closestPrecedingNode(id []byte) *models.Node {
 /*
 	Periodic functions implementation
 */
-
+// The stabilization protocol works as follows:
+// Stabilize(): n asks its successor for its predecessor p and decides whether p should be n‘s successor instead (this is the case if p recently joined the system).
+// Notify(): notifies n‘s successor of its existence, so it can change its predecessor to n
+// Fix_fingers(): updates finger tables 这一步在New_node中做
 func (n *Node) stabilize() {
 
 	n.succMtx.RLock()
@@ -452,6 +491,7 @@ func (n *Node) stabilize() {
 	n.notifyRPC(succ, n.Node)
 }
 
+// checkes whether predecessor has failed. Newnode()中周期调用
 func (n *Node) checkPredecessor() {
 	// implement using rpc func
 	n.predMtx.RLock()
@@ -471,8 +511,8 @@ func (n *Node) checkPredecessor() {
 
 /*
 	RPC callers implementation
+	只是对transport包中的rpc方法进行封装(Client端调用)
 */
-
 // getSuccessorRPC the successor ID of a remote node.
 func (n *Node) getSuccessorRPC(node *models.Node) (*models.Node, error) {
 	return n.transport.GetSuccessor(node)
@@ -527,8 +567,10 @@ func (n *Node) deleteKeysRPC(
 
 /*
 	RPC interface implementation
+	Server端函数调用
 */
 
+// ctx context.Context上下文
 // GetSuccessor gets the successor on the node..
 func (n *Node) GetSuccessor(ctx context.Context, r *models.ER) (*models.Node, error) {
 	n.succMtx.RLock()
@@ -585,6 +627,7 @@ func (n *Node) GetPredecessor(ctx context.Context, r *models.ER) (*models.Node, 
 	return pred, nil
 }
 
+// Notify notifies Chord that Node(Client) thinks it is our predecessor.
 func (n *Node) Notify(ctx context.Context, node *models.Node) (*models.ER, error) {
 	n.predMtx.Lock()
 	defer n.predMtx.Unlock()
@@ -610,6 +653,7 @@ func (n *Node) Notify(ctx context.Context, node *models.Node) (*models.ER, error
 	return emptyRequest, nil
 }
 
+// 获取key对应的数据
 func (n *Node) XGet(ctx context.Context, req *models.GetRequest) (*models.GetResponse, error) {
 	n.stMtx.RLock()
 	defer n.stMtx.RUnlock()
@@ -652,6 +696,7 @@ func (n *Node) XMultiDelete(ctx context.Context, req *models.MultiDeleteRequest)
 	return emptyDeleteResponse, err
 }
 
+// 删除本节点，将当前节点的前置节点和后继节点挂钩
 func (n *Node) Stop() {
 	close(n.shutdownCh)
 

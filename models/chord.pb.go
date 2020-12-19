@@ -551,7 +551,7 @@ var _ grpc.ClientConn
 const _ = grpc.SupportPackageIsVersion4
 
 // Client API for Chord service
-
+// ChordClient只是实现本地调用远程函数的接口，即使用rpc：client接口->(连接server)->server的handler响应->server调用函数(并返回)
 type ChordClient interface {
 	// GetPredecessor returns the node believed to be the current predecessor.
 	GetPredecessor(ctx context.Context, in *ER, opts ...grpc.CallOption) (*Node, error)

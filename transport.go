@@ -3,13 +3,14 @@ package chord
 import (
 	"errors"
 	"fmt"
-	"github.com/arriqaaq/chord/models"
-	"golang.org/x/net/context"
-	"google.golang.org/grpc"
 	"net"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/arriqaaq/chord/models"
+	"golang.org/x/net/context"
+	"google.golang.org/grpc"
 )
 
 var (
@@ -25,6 +26,13 @@ func Dial(addr string, opts ...grpc.DialOption) (*grpc.ClientConn, error) {
 	return grpc.Dial(addr, opts...)
 }
 
+/*
+	要实现一个 RPC 框架，只需要把以下三点实现了就基本完成了：
+
+	Call ID 映射：可以直接使用函数字符串，也可以使用整数 ID。映射表一般就是一个哈希表。
+	序列化反序列化：可以自己写，也可以使用 Protobuf 或者 FlatBuffers 之类的。
+	网络传输库：可以自己写 Socket，或者用 Asio，ZeroMQ，Netty 之类。
+*/
 /*
 	Transport enables a node to talk to the other nodes in
 	the ring
@@ -104,6 +112,7 @@ func (g *grpcConn) Close() {
 	g.conn.Close()
 }
 
+// Registry(服务发现)：借助 JNDI 发布并调用了 RMI 服务。实际上，JNDI 就是一个注册表，服务端将服务对象放入到注册表中，客户端从注册表中获取服务对象。
 func (g *GrpcTransport) registerNode(node *Node) {
 	models.RegisterChordServer(g.server, node)
 }
