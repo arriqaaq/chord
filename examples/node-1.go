@@ -1,8 +1,8 @@
 package main
 
 import (
-	"github.com/arriqaaq/chord"
-	"github.com/arriqaaq/chord/models"
+	"github.com/zebra-uestc/chord"
+	"github.com/zebra-uestc/chord/models"
 	"log"
 	"math/big"
 	"os"
