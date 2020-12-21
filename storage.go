@@ -4,7 +4,7 @@ import (
 	// "errors"
 	"hash"
 
-	"github.com/arriqaaq/chord/models"
+	"github.com/zebra-uestc/chord/models"
 	// "math/big"
 )
 

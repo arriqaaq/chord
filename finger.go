@@ -2,7 +2,7 @@ package chord
 
 import (
 	"fmt"
-	"github.com/arriqaaq/chord/models"
+	"github.com/zebra-uestc/chord/models"
 	"math/big"
 )
 

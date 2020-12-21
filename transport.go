@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/arriqaaq/chord/models"
+	"github.com/zebra-uestc/chord/models"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 )
@@ -60,7 +60,7 @@ type Transport interface {
 
 type GrpcTransport struct {
 	config *Config
-
+	*models.UnimplementedChordServer
 	timeout time.Duration
 	maxIdle time.Duration
 

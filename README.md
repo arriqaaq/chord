@@ -11,15 +11,15 @@ https://pdos.csail.mit.edu/papers/ton:chord/paper-ton.pdf
 package main
 
 import (
-	"github.com/arriqaaq/chord"
-	"github.com/arriqaaq/chord/internal"
+	"github.com/zebra-uestc/chord"
+	"github.com/zebra-uestc/chord/mdoels"
 	"log"
 	"os"
 	"os/signal"
 	"time"
 )
 
-func createNode(id string, addr string, joinNode *internal.Node) (*chord.Node, error) {
+func createNode(id string, addr string, joinNode *models.Node) (*chord.Node, error) {
 
 	cnf := chord.DefaultConfig()
 	cnf.Id = id

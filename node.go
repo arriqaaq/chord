@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/arriqaaq/chord/models"
+	"github.com/zebra-uestc/chord/models"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 )
@@ -179,7 +179,7 @@ func NewNode(cnf *Config, joinNode *models.Node) (*Node, error) {
 
 type Node struct {
 	*models.Node
-
+	*models.UnimplementedChordServer
 	cnf *Config
 
 	predecessor *models.Node

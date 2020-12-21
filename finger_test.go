@@ -3,7 +3,7 @@ package chord
 import (
 	"crypto/sha1"
 	"fmt"
-	"github.com/arriqaaq/chord/models"
+	"github.com/zebra-uestc/chord/models"
 	"math/big"
 	"reflect"
 	"testing"
