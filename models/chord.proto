@@ -1,5 +1,5 @@
 syntax = "proto3";
-
+option go_package = "github.com/zebra-uestc/chord/models";
 package models;
 
 // Chord is the service for inter-node communication.
