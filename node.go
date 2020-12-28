@@ -15,6 +15,7 @@ import (
 
 func DefaultConfig() *Config {
 	n := &Config{
+		//sha1.New的Hash function size=20
 		Hash:     sha1.New,
 		DialOpts: make([]grpc.DialOption, 0, 5),
 	}
@@ -50,7 +51,10 @@ type Config struct {
 
 // hashsize是finger表的记录个数。。。
 func (c *Config) Validate() error {
-	// hashsize shouldnt be less than hash func size？？？
+	// hashsize shouldnt be less than hash func size
+	if c.HashSize < c.Hash().Size() {
+		return ERR_HASHSIZE
+	}
 	return nil
 }
 
@@ -73,10 +77,12 @@ func NewInode(id string, addr string) *models.Node {
 	exists in the chord ring
 */
 //将单个节点(models.Node)按配置构造环上的节点(Node)，并加入chord环，启动该节点
+//新加入的节点配置信息为cnf，joinNode为环上已join的父节点
 func NewNode(cnf *Config, joinNode *models.Node) (*Node, error) {
 	if err := cnf.Validate(); err != nil {
 		return nil, err
 	}
+	//node实例化
 	node := &Node{
 		Node:       new(models.Node),
 		shutdownCh: make(chan struct{}),
@@ -94,6 +100,7 @@ func NewNode(cnf *Config, joinNode *models.Node) (*Node, error) {
 	if err != nil {
 		return nil, err
 	}
+	//func (z *Int) SetBytes(buf []byte) *Int 将20位byte数组转化为big int密钥形式
 	aInt := (&big.Int{}).SetBytes(id)
 
 	fmt.Printf("new node id %d, \n", aInt)
@@ -103,6 +110,7 @@ func NewNode(cnf *Config, joinNode *models.Node) (*Node, error) {
 
 	// Populate finger table
 	node.fingerTable = newFingerTable(node.Node, cnf.HashSize)
+	fmt.Println(node.FingerTableString())
 
 	// Start RPC server
 	transport, err := NewGrpcTransport(cnf)
@@ -116,7 +124,7 @@ func NewNode(cnf *Config, joinNode *models.Node) (*Node, error) {
 
 	node.transport.Start()
 
-	// 找到joinNode的后继节点succ
+	// 根据joinNode的finger表更新新加入的节点的后继节点succ
 	if err := node.join(joinNode); err != nil {
 		return nil, err
 	}
@@ -213,25 +221,28 @@ func (n *Node) hashKey(key string) ([]byte, error) {
 
 // n.findSuccessorRPC(joinNode, n.Id)？？？
 // 把joinnode加入环？？？
+//joinnode为已在环上的父节点，根据joinNode的信息将自己加入环
 func (n *Node) join(joinNode *models.Node) error {
 	// First check if node already present in the circle
 	// Join this node to the same chord ring as parent
 	var foo *models.Node
 	// // Ask if our id already exists on the ring.
 	if joinNode != nil {
+		//根据n.Id,通过grpc在joinNode的fingerTable找到后继节点
 		remoteNode, err := n.findSuccessorRPC(joinNode, n.Id)
 		if err != nil {
 			return err
 		}
-
+		//如果后继节点的id与我想要加入环中的节点n.Id相等，说明该节点已经加入环
 		if isEqual(remoteNode.Id, n.Id) {
 			return ERR_NODE_EXISTS
 		}
 		foo = joinNode
 	} else {
+		//如果没有父节点，说明环中没有节点，初始化自己就是自己的父节点
 		foo = n.Node
 	}
-
+	//joinNode=nil的时候更新succ，一般joinNode=nil的时候succ都是自己
 	succ, err := n.findSuccessorRPC(foo, n.Id)
 	if err != nil {
 		return err
@@ -317,35 +328,17 @@ func (n *Node) delete(key string) error {
 }
 
 // 将pred和succ节点之间的键值对转移给当前节点？不加判断？？？感觉不对
+//主要是为了处理节点退出时的key的转移，如果当前节点退出，则属于当前节点的key会转移到succ上
+
+// 修改了下逻辑，将原有的transferKeys替换成原来的moveKeysFromLocal，并删除的是自己的storage的key
+//在Stop函数里面（处理节点的退出）也用到了transferKeys，节点的删除和新增的transferKeys不一样，所以还是得弄两个函数来区分
+//论文里面节点的退出归类为节点崩溃的一种。
 func (n *Node) transferKeys(pred, succ *models.Node) {
 
-	keys, err := n.requestKeys(pred, succ)
+	//修改为将(n.Id, pred.Id)之间的key转移到succ上
+	keys, err := n.storage.Between(n.Id, pred.Id)
 	if len(keys) > 0 {
 		fmt.Println("transfering: ", keys, err)
-	}
-	delKeyList := make([]string, 0, 10)
-	// store the keys in current node
-	for _, item := range keys {
-		if item == nil {
-			continue
-		}
-		n.storage.Set(item.Key, item.Value)
-		delKeyList = append(delKeyList, item.Key)
-	}
-	// delete the keys from the successor node, as current node
-	// is responsible for the keys
-	if len(delKeyList) > 0 {
-		n.deleteKeys(succ, delKeyList)
-	}
-
-}
-
-// 实现Node删除时将Node上的所有数据转移给其successor？？？逻辑不对
-func (n *Node) moveKeysFromLocal(pred, succ *models.Node) {
-
-	keys, err := n.storage.Between(pred.Id, succ.Id)
-	if len(keys) > 0 {
-		fmt.Println("transfering: ", keys, succ, err)
 	}
 	delKeyList := make([]string, 0, 10)
 	// store the keys in current node
@@ -359,10 +352,40 @@ func (n *Node) moveKeysFromLocal(pred, succ *models.Node) {
 		}
 		delKeyList = append(delKeyList, item.Key)
 	}
-	// delete the keys from the successor node, as current node
-	// is responsible for the keys
+	// delete the keys from the current node.
 	if len(delKeyList) > 0 {
-		n.deleteKeys(succ, delKeyList)
+		for i := range delKeyList {
+			n.storage.Delete(delKeyList[i])
+		}
+	}
+
+}
+
+// 实现Node删除时将Node上的所有数据转移给其successor？？？逻辑不对
+//将本地的key删除，转移到新加入的节点中去
+func (n *Node) moveKeysFromLocal(fromNode, toNode *models.Node) {
+
+	keys, err := n.storage.Between(fromNode.Id, toNode.Id)
+	if len(keys) > 0 {
+		fmt.Println("transfering: ", keys, toNode, err)
+	}
+	delKeyList := make([]string, 0, 10)
+	// store the keys in current node
+	for _, item := range keys {
+		if item == nil {
+			continue
+		}
+		err := n.setKeyRPC(toNode, item.Key, item.Value)
+		if err != nil {
+			fmt.Println("error transfering key: ", item.Key, toNode.Addr)
+		}
+		delKeyList = append(delKeyList, item.Key)
+	}
+	// delete the keys from the current node.
+	if len(delKeyList) > 0 {
+		for i := range delKeyList {
+			n.storage.Delete(delKeyList[i])
+		}
 	}
 
 }
@@ -389,7 +412,10 @@ func (n *Node) requestKeys(pred, succ *models.Node) ([]*models.KV, error) {
 	then look for how to travel in the ring
 */
 
-// 在finger表中找键值对应该放在哪个节点时，每次找到hash值包括节点hash的区间，取左边界hash映射的的节点，线判断键值对hash值是否在该节点到其后继节点之间：若是，则放后继节点；若否，则？？？感觉逻辑不对
+// 在finger表中找键值对应该放在哪个节点时，每次找到hash值包括节点hash的区间，取左边界hash映射的的节点，先判断键值对hash值是否在该节点到其后继节点之间：若是，则放后继节点；若否，则？？？感觉逻辑不对
+//id为fingerEntry的id，比如第i+1个fingerEntry：id为n + 2^i，找到对应的后继node
+//如果id属于（curr.Id, succ.Id），说明succ是它的后继节点，return succ，如果不是，则找到与它离得最近的那个节点
+//初始化时，succ = cur
 func (n *Node) findSuccessor(id []byte) (*models.Node, error) {
 	// Check if lock is needed throughout the process
 	n.succMtx.RLock()
@@ -442,6 +468,7 @@ func (n *Node) findSuccessor(id []byte) (*models.Node, error) {
 
 // Fig 5 implementation for closest_preceding_node
 // 返回当前节点finger表中不小于键值对hash值的最小id映射的节点？？？(找存储该键值对的节点的过程)
+//找到离id最接近的最大的节点，从后往前找
 func (n *Node) closestPrecedingNode(id []byte) *models.Node {
 	n.predMtx.RLock()
 	defer n.predMtx.RUnlock()
@@ -451,11 +478,13 @@ func (n *Node) closestPrecedingNode(id []byte) *models.Node {
 	m := len(n.fingerTable) - 1
 	for i := m; i >= 0; i-- {
 		f := n.fingerTable[i]
-		if f == nil || f.Node == nil {
+		if f == nil || f.RemoteNode == nil {
 			continue
 		}
+		//如果finger表中的id：f.Id是在当前节点的id：curr.Id与我想要找的id之间（一般情况id最大，cur.Id最小），返回f.Node
+		//比如想要找id=54的后继节点，当前的节点id为8，fingerTable最后一个f.Id=42（fingerTable的node为升序），我们就去id=42的node的finger表中继续找id=54的后继节点
 		if between(f.Id, curr.Id, id) {
-			return f.Node
+			return f.RemoteNode
 		}
 	}
 	return curr
@@ -466,8 +495,9 @@ func (n *Node) closestPrecedingNode(id []byte) *models.Node {
 */
 // The stabilization protocol works as follows:
 // Stabilize(): n asks its successor for its predecessor p and decides whether p should be n‘s successor instead (this is the case if p recently joined the system).
-// Notify(): notifies n‘s successor of its existence, so it can change its predecessor to n
-// Fix_fingers(): updates finger tables 这一步在New_node中做
+// Stabilize(): n查询其后继节点的前序节点P来决定P是否应该是n的后续节点，也就是说当p不是n本身时，说明p是新加入的，此时将n的后继节点设置为p。
+// Notify(): notifies n‘s successor of its existence, so it can change its predecessor to n.This is an implementation of the psuedocode from figure 7 of chord paper.
+// Fix_fingers(): updates finger tables
 func (n *Node) stabilize() {
 
 	n.succMtx.RLock()
@@ -477,17 +507,21 @@ func (n *Node) stabilize() {
 		return
 	}
 	n.succMtx.RUnlock()
-
+	//x是后继节点的前驱节点，即一般情况下应该是自己
+	//如果此时新加入了节点p，则x是节点p，此时需要将p更新为自己的后继节点
 	x, err := n.getPredecessorRPC(succ)
 	if err != nil || x == nil {
 		fmt.Println("error getting predecessor, ", err, x)
 		return
 	}
+	//x.Id在（n.Id, succ.Id）之间
 	if x.Id != nil && between(x.Id, n.Id, succ.Id) {
 		n.succMtx.Lock()
+		//将x更新为自己的后继节点
 		n.successor = x
 		n.succMtx.Unlock()
 	}
+	//notifyRPC表示连接succ，在succ节点上执行Notify(n.Node)
 	n.notifyRPC(succ, n.Node)
 }
 
@@ -627,24 +661,28 @@ func (n *Node) GetPredecessor(ctx context.Context, r *models.ER) (*models.Node, 
 	return pred, nil
 }
 
-// Notify notifies Chord that Node(Client) thinks it is our predecessor.
+// Notify notifies Chord that Node(Client) thinks it is our predecessor
+//Notify(n0): n0通知n它的存在，若此时n没有前序节点或，n0比n现有的前序节点更加靠近n，则n将其设置为前序节点。
 func (n *Node) Notify(ctx context.Context, node *models.Node) (*models.ER, error) {
 	n.predMtx.Lock()
 	defer n.predMtx.Unlock()
+	//prevPredNode记录的更新n.predecessor后，之前的n.predecessor
 	var prevPredNode *models.Node
 
 	pred := n.predecessor
+	//若此时n没有前序节点或
+	//node.Id比n现有的前序节点pred.Id更加靠近n，则将node设置为n的前序节点
 	if pred == nil || between(node.Id, pred.Id, n.Id) {
-		// fmt.Println("setting predecessor", n.Id, node.Id)
+		fmt.Println("setting predecessor", n.Id, node.Id)
 		if n.predecessor != nil {
 			prevPredNode = n.predecessor
 		}
 		n.predecessor = node
 
-		// transfer keys from parent node
+		// transfer keys from current node to node's predecessor
 		if prevPredNode != nil {
 			if between(n.predecessor.Id, prevPredNode.Id, n.Id) {
-				n.transferKeys(prevPredNode, n.predecessor)
+				n.moveKeysFromLocal(prevPredNode, n.predecessor)
 			}
 		}
 
@@ -712,7 +750,7 @@ func (n *Node) Stop() {
 	n.predMtx.RUnlock()
 
 	if n.Node.Addr != succ.Addr && pred != nil {
-		n.moveKeysFromLocal(pred, succ)
+		n.transferKeys(pred, succ)
 		predErr := n.setPredecessorRPC(succ, pred)
 		succErr := n.setSuccessorRPC(pred, succ)
 		fmt.Println("stop errors: ", predErr, succErr)
