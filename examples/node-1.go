@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/zebra-uestc/chord"
 	"github.com/zebra-uestc/chord/models"
 	"log"
@@ -13,6 +14,7 @@ import (
 func createNode(id string, addr string, sister *models.Node) (*chord.Node, error) {
 
 	cnf := chord.DefaultConfig()
+	fmt.Println(cnf.HashSize)
 	cnf.Id = id
 	cnf.Addr = addr
 	cnf.Timeout = 10 * time.Millisecond
@@ -34,6 +36,10 @@ func main() {
 	if err != nil {
 		log.Fatalln(err)
 	}
+	fmt.Println(h.FingerTableString())
+	// Set up channel on which to send signal notifications.
+	// We must use a buffered channel or risk missing the signal
+	// if we're not ready to receive when the signal is sent.
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 	<-time.After(10 * time.Second)

@@ -10,9 +10,15 @@ import (
 )
 
 func TestNewFingerTable(t *testing.T) {
+	//newFingerTable(node *models.Node, m int)中的node.Id是一个byte数组,m为偏移量
+	//NewInode(id string, addr string)将id转换为size为20位的byte数组
+	//sha1.New().Size()=20
+	//对于newFingerTable来说，返回的每个fingerEntry由fingerId和Node二元组组成
+	//Node为输入的node
+	//fingerId为起始id转换为byte数组后的id再加上offset
 	g := newFingerTable(NewInode("8", "0.0.0.0:8003"), sha1.New().Size())
 	for i, j := range g {
-		fmt.Printf("%d, %x, %x\n", i, j.Id, j.Node.Id)
+		fmt.Printf("%d, %x, %x\n", i, j.Id, j.RemoteNode.Id)
 	}
 }
 

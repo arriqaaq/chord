@@ -40,7 +40,7 @@ func (a *mapStore) hashKey(key string) ([]byte, error) {
 	return val, nil
 }
 
-// 返回存在的的key的数据值
+// 返回存在的key的数据值
 func (a *mapStore) Get(key string) ([]byte, error) {
 	val, ok := a.data[key]
 	if !ok {
