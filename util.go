@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"errors"
+	"math/big"
 	"math/rand"
 	"time"
 )
@@ -12,6 +13,7 @@ var (
 	ERR_NO_SUCCESSOR  = errors.New("cannot find successor")
 	ERR_NODE_EXISTS   = errors.New("node with id already exists")
 	ERR_KEY_NOT_FOUND = errors.New("key not found")
+	ERR_HASHSIZE      = errors.New("hashsize should not be less than hash func size")
 )
 
 func isEqual(a, b []byte) bool {
@@ -53,4 +55,12 @@ func GetHashID(key string) []byte {
 	}
 	val := h.Sum(nil)
 	return val
+}
+
+// IDToString converts a []byte to a big.Int string, useful for debugging/logging.
+func IDToString(id []byte) string {
+	keyInt := big.Int{}
+	keyInt.SetBytes(id)
+
+	return keyInt.String()
 }
