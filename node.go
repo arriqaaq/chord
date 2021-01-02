@@ -236,7 +236,7 @@ func (n *Node) join(joinNode *models.Node) error {
 		if err != nil {
 			return err
 		}
-		fmt.Println("findSuccessorRPC()->remoteNode", remoteNode)
+		fmt.Println("findSuccessorRPC()->remoteNode", remoteNode.Addr)
 		//如果后继节点的id与我想要加入环中的节点n.Id相等，说明该节点已经加入环
 		if isEqual(remoteNode.Id, n.Id) {
 			return ERR_NODE_EXISTS
@@ -252,7 +252,7 @@ func (n *Node) join(joinNode *models.Node) error {
 	n.succMtx.Lock()
 	n.successor = succ
 	n.succMtx.Unlock()
-	fmt.Println("successor...", succ)
+	fmt.Println("successor...", succ.Addr)
 	// 刚加入节点，找到successor后，马上转移数据
 	// 直接从succ上拉取数据，而不用先找predecessor
 	if n.successor != nil && n.predecessor != nil {
@@ -337,10 +337,10 @@ func (n *Node) delete(key string) error {
 
 //已验证逻辑，并做修改
 // 感觉transfer是增加节点时从succ节点转移数据用的
-// 把pred到succ之间的数据转移到n上
+// 从succ把pred到n之间的数据转移到n上
 //论文里面节点的退出归类为节点崩溃的一种。
 func (n *Node) transferKeys(pred, succ *models.Node) {
-	fmt.Println("transferKeys()...pred, succ ", pred, succ)
+	fmt.Println("transferKeys()...pred, succ ", pred.Addr, succ.Addr)
 	//修改为将(n.Id, pred.Id)之间的key从succ转移到n上
 	keys, err := n.requestKeys(pred, n.Node)
 	if len(keys) > 0 {
@@ -369,10 +369,13 @@ func (n *Node) transferKeys(pred, succ *models.Node) {
 // 实现Node删除时将Node上的所有数据转移给其successor
 // 将fromnode到tonode的数据存到tonode上，并存本地删除这些数据
 func (n *Node) moveKeysFromLocal(fromNode, toNode *models.Node) {
-	fmt.Println("moveKeysFromLocal()...from, to ", fromNode, toNode)
+	fmt.Println("moveKeysFromLocal()...from, to ", fromNode.Addr, toNode.Addr)
 	keys, err := n.storage.Between(fromNode.Id, toNode.Id)
 	if len(keys) > 0 {
-		fmt.Println("transfering: ", keys, toNode, err)
+		for _, item := range keys {
+			fmt.Println("transfering key,value: ", item.Key, item.Value, err)
+		}
+
 	}
 	delKeyList := make([]string, 0, 10)
 	// store the keys in  toNode
@@ -507,7 +510,7 @@ func (n *Node) closestPrecedingNode(id []byte) *models.Node {
 */
 //已验证逻辑
 func (n *Node) stabilize() {
-	fmt.Println("stabilize()... ")
+	// fmt.Println("stabilize()... ")
 	n.succMtx.RLock()
 	succ := n.successor
 	if succ == nil {
@@ -528,6 +531,7 @@ func (n *Node) stabilize() {
 		//将x更新为自己的后继节点
 		n.successor = x
 		n.succMtx.Unlock()
+		fmt.Println("successor ", x.Addr)
 	}
 	//notifyRPC表示连接succ，在succ节点上执行Notify(n.Node)
 	n.notifyRPC(n.successor, n.Node)
@@ -535,7 +539,7 @@ func (n *Node) stabilize() {
 
 // checkes whether predecessor has failed. Newnode()中周期调用
 func (n *Node) checkPredecessor() {
-	fmt.Println("checkPredecessor()... ")
+	// fmt.Println("checkPredecessor()... ")
 	// implement using rpc func
 	n.predMtx.RLock()
 	pred := n.predecessor
@@ -631,6 +635,7 @@ func (n *Node) SetSuccessor(ctx context.Context, succ *models.Node) (*models.ER,
 	n.succMtx.Lock()
 	n.successor = succ
 	n.succMtx.Unlock()
+	fmt.Println("successor...", n.successor.Addr)
 	return emptyRequest, nil
 }
 
@@ -639,6 +644,7 @@ func (n *Node) SetPredecessor(ctx context.Context, pred *models.Node) (*models.E
 	n.predMtx.Lock()
 	n.predecessor = pred
 	n.predMtx.Unlock()
+	fmt.Println("predecessor...", n.predecessor.Addr)
 	return emptyRequest, nil
 }
 
@@ -677,26 +683,26 @@ func (n *Node) Notify(ctx context.Context, node *models.Node) (*models.ER, error
 	n.predMtx.Lock()
 	defer n.predMtx.Unlock()
 	//prevPredNode记录的更新n.predecessor后，之前的n.predecessor
-	var prevPredNode *models.Node
+	// var prevPredNode *models.Node
 
 	pred := n.predecessor
 	//若此时n没有前序节点或
 	//node.Id比n现有的前序节点pred.Id更加靠近n，则将node设置为n的前序节点
 	if pred == nil || between(node.Id, pred.Id, n.Id) {
-		//// fmt.Println("setting predecessor", n.Id, node.Id)
-		if n.predecessor != nil {
-			prevPredNode = n.predecessor
-		}
+		fmt.Println("predecessor", node.Addr)
+		// if n.predecessor != nil {
+		// 	prevPredNode = n.predecessor
+		// }
 		n.predecessor = node
 
 		// 增加节点时transfer key的工作什么时候由哪个函数做？？？这里有问题
 		// 应该是新节点的Notify函数调用transfer_Keys！！！
 		// transfer keys from current node to node's predecessor
-		if prevPredNode != nil {
-			if between(n.predecessor.Id, prevPredNode.Id, n.Id) {
-				n.transferKeys(prevPredNode, n.predecessor)
-			}
-		}
+		// if prevPredNode != nil {
+		// 	if between(n.predecessor.Id, prevPredNode.Id, n.Id) {
+		// 		n.transferKeys(prevPredNode, n.predecessor)
+		// 	}
+		// }
 	}
 
 	return emptyRequest, nil

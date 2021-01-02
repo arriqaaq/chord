@@ -45,7 +45,7 @@ func main() {
 	shut := make(chan bool)
 	var count int
 	go func() {
-		ticker := time.NewTicker(20 * time.Millisecond)
+		ticker := time.NewTicker(500 * time.Millisecond)
 		for {
 			select {
 			case <-ticker.C:
