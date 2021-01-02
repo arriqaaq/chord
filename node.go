@@ -112,7 +112,7 @@ func NewNode(cnf *Config, joinNode *models.Node) (*Node, error) {
 
 	// Populate finger table
 	node.fingerTable = newFingerTable(node.Node, cnf.HashSize)
-	fmt.Println(node.FingerTableString())
+	// fmt.Println(node.FingerTableString())
 
 	// Start RPC server
 	transport, err := NewGrpcTransport(cnf)
@@ -226,6 +226,7 @@ func (n *Node) hashKey(key string) ([]byte, error) {
 func (n *Node) join(joinNode *models.Node) error {
 	// First check if node already present in the circle
 	// Join this node to the same chord ring as parent
+	fmt.Println("join node-1...")
 	var err error
 	var succ *models.Node
 	// // Ask if our id already exists on the ring.
@@ -235,6 +236,7 @@ func (n *Node) join(joinNode *models.Node) error {
 		if err != nil {
 			return err
 		}
+		fmt.Println("findSuccessorRPC()->remoteNode", remoteNode)
 		//如果后继节点的id与我想要加入环中的节点n.Id相等，说明该节点已经加入环
 		if isEqual(remoteNode.Id, n.Id) {
 			return ERR_NODE_EXISTS
@@ -250,7 +252,7 @@ func (n *Node) join(joinNode *models.Node) error {
 	n.succMtx.Lock()
 	n.successor = succ
 	n.succMtx.Unlock()
-
+	fmt.Println("successor...", succ)
 	// 刚加入节点，找到successor后，马上转移数据
 	// 直接从succ上拉取数据，而不用先找predecessor
 	if n.successor != nil && n.predecessor != nil {
@@ -338,7 +340,7 @@ func (n *Node) delete(key string) error {
 // 把pred到succ之间的数据转移到n上
 //论文里面节点的退出归类为节点崩溃的一种。
 func (n *Node) transferKeys(pred, succ *models.Node) {
-
+	fmt.Println("transferKeys()...pred, succ ", pred, succ)
 	//修改为将(n.Id, pred.Id)之间的key从succ转移到n上
 	keys, err := n.requestKeys(pred, n.Node)
 	if len(keys) > 0 {
@@ -367,7 +369,7 @@ func (n *Node) transferKeys(pred, succ *models.Node) {
 // 实现Node删除时将Node上的所有数据转移给其successor
 // 将fromnode到tonode的数据存到tonode上，并存本地删除这些数据
 func (n *Node) moveKeysFromLocal(fromNode, toNode *models.Node) {
-
+	fmt.Println("moveKeysFromLocal()...from, to ", fromNode, toNode)
 	keys, err := n.storage.Between(fromNode.Id, toNode.Id)
 	if len(keys) > 0 {
 		fmt.Println("transfering: ", keys, toNode, err)
@@ -459,7 +461,7 @@ func (n *Node) findSuccessor(id []byte) (*models.Node, error) {
 		return succ, nil
 
 	}
-	return nil, nil
+	// return nil, nil
 }
 
 //已验证逻辑
@@ -505,7 +507,7 @@ func (n *Node) closestPrecedingNode(id []byte) *models.Node {
 */
 //已验证逻辑
 func (n *Node) stabilize() {
-
+	fmt.Println("stabilize()... ")
 	n.succMtx.RLock()
 	succ := n.successor
 	if succ == nil {
@@ -533,6 +535,7 @@ func (n *Node) stabilize() {
 
 // checkes whether predecessor has failed. Newnode()中周期调用
 func (n *Node) checkPredecessor() {
+	fmt.Println("checkPredecessor()... ")
 	// implement using rpc func
 	n.predMtx.RLock()
 	pred := n.predecessor

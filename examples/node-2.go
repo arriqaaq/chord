@@ -2,14 +2,15 @@ package main
 
 import (
 	"fmt"
-	"github.com/zebra-uestc/chord"
-	"github.com/zebra-uestc/chord/models"
 	"log"
 	"math/big"
 	"os"
 	"os/signal"
 	"strconv"
 	"time"
+
+	"github.com/zebra-uestc/chord"
+	"github.com/zebra-uestc/chord/models"
 )
 
 func createNode(id string, addr string, sister *models.Node) (*chord.Node, error) {
@@ -44,7 +45,7 @@ func main() {
 	shut := make(chan bool)
 	var count int
 	go func() {
-		ticker := time.NewTicker(1 * time.Second)
+		ticker := time.NewTicker(20 * time.Millisecond)
 		for {
 			select {
 			case <-ticker.C:
