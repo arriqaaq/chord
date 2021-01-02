@@ -52,9 +52,9 @@ type Config struct {
 // hashsize是finger表的记录个数。。。
 func (c *Config) Validate() error {
 	// hashsize shouldnt be less than hash func size
-	if c.HashSize < c.Hash().Size() {
-		return ERR_HASHSIZE
-	}
+	// if c.HashSize < c.Hash().Size() {
+	// 	return ERR_HASHSIZE
+	// }
 	return nil
 }
 
@@ -112,6 +112,7 @@ func NewNode(cnf *Config, joinNode *models.Node) (*Node, error) {
 
 	// Populate finger table
 	node.fingerTable = newFingerTable(node.Node, cnf.HashSize)
+	// node.fingerTable = newFingerTable(node.Node, 5)
 	// fmt.Println(node.FingerTableString())
 
 	// Start RPC server
@@ -137,6 +138,7 @@ func NewNode(cnf *Config, joinNode *models.Node) (*Node, error) {
 		for {
 			select {
 			case <-ticker.C:
+				// fmt.Println("stabilize()...")
 				node.stabilize()
 			case <-node.shutdownCh:
 				ticker.Stop()
@@ -148,10 +150,12 @@ func NewNode(cnf *Config, joinNode *models.Node) (*Node, error) {
 	// Peridoically fix finger tables.
 	go func() {
 		next := 0
-		ticker := time.NewTicker(100 * time.Millisecond)
+		// ticker := time.NewTicker(100 * time.Millisecond)
+		ticker := time.NewTicker(1 * time.Second)
 		for {
 			select {
 			case <-ticker.C:
+				// fmt.Println("fixFinger()...")
 				next = node.fixFinger(next)
 			case <-node.shutdownCh:
 				ticker.Stop()
@@ -167,6 +171,7 @@ func NewNode(cnf *Config, joinNode *models.Node) (*Node, error) {
 		for {
 			select {
 			case <-ticker.C:
+				// fmt.Println("checkPredecessor()...")
 				node.checkPredecessor()
 			case <-node.shutdownCh:
 				ticker.Stop()
@@ -236,7 +241,7 @@ func (n *Node) join(joinNode *models.Node) error {
 		if err != nil {
 			return err
 		}
-		fmt.Println("findSuccessorRPC()->remoteNode", remoteNode.Addr)
+		fmt.Println("findSuccessorRPC()->remoteNode: ", remoteNode.Addr)
 		//如果后继节点的id与我想要加入环中的节点n.Id相等，说明该节点已经加入环
 		if isEqual(remoteNode.Id, n.Id) {
 			return ERR_NODE_EXISTS
@@ -455,7 +460,7 @@ func (n *Node) requestKeys(pred, succ *models.Node) ([]*models.KV, error) {
 */
 
 // 已验证逻辑，并做修改，边界情况欠考虑(只有一个node),感觉可能还有问题
-// 本函数以当前n为起点找hash为id的数据应当存放的节点
+// 本函数以当前n为起点找hash为id的数据应当存放的节点，或某节点的下一个节点
 // id为fingerEntry的id，比如第i+1个fingerEntry：id为n + 2^i，找到对应的后继node，注意区分finger表的id和节点的id(本函数应该使用节点id)
 // 初始化时，succ = cur
 func (n *Node) findSuccessor(id []byte) (*models.Node, error) {
@@ -487,6 +492,16 @@ func (n *Node) findSuccessor(id []byte) (*models.Node, error) {
 			if preceeding node and current node are the same,
 			store the key on this node
 		*/
+		if isEqual(pred.Id, n.Id) {
+			// succ, err = n.getSuccessorRPC(pred)
+			succ = n.successor
+			if succ == nil {
+				// not able to wrap around, current node is the successor
+				return pred, nil
+			}
+			return succ, nil
+		}
+
 		succ, err := n.findSuccessorRPC(pred, id)
 		// fmt.Println("successor to closest node ", succ, err)
 		if err != nil {
@@ -730,8 +745,7 @@ func (n *Node) Notify(ctx context.Context, node *models.Node) (*models.ER, error
 		}
 		n.predecessor = node
 
-		// 增加节点时transfer key的工作什么时候由哪个函数做？？？这里有问题
-		// 应该是新节点的Notify函数调用transfer_Keys！！！
+		// 增加节点时transfer key的工作由移出数据的节点做
 		// transfer keys from current node to node's predecessor
 		if prevPredNode != nil {
 			if between(n.predecessor.Id, prevPredNode.Id, n.Id) {
@@ -759,7 +773,7 @@ func (n *Node) XSet(ctx context.Context, req *models.SetRequest) (*models.SetRes
 	n.stMtx.Lock()
 	defer n.stMtx.Unlock()
 	// fmt.Println("setting key on ", n.Node.Addr, req.Key, req.Value)
-	fmt.Println("setting key on ", n.Node.Addr, " key:", req.Key)
+	// fmt.Println("setting key on ", n.Node.Addr, " key:", req.Key)
 
 	err := n.storage.Set(req.Key, req.Value)
 	return emptySetResponse, err

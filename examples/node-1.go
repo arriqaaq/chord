@@ -37,7 +37,7 @@ func main() {
 	if err != nil {
 		log.Fatalln(err)
 	}
-	// fmt.Println(h.FingerTableString())
+	fmt.Println(h.FingerTableString())
 	// Set up channel on which to send signal notifications.
 	// We must use a buffered channel or risk missing the signal
 	// if we're not ready to receive when the signal is sent.
