@@ -226,7 +226,7 @@ func (n *Node) hashKey(key string) ([]byte, error) {
 func (n *Node) join(joinNode *models.Node) error {
 	// First check if node already present in the circle
 	// Join this node to the same chord ring as parent
-	fmt.Println("join node-1...")
+	fmt.Println("join node...")
 	var err error
 	var succ *models.Node
 	// // Ask if our id already exists on the ring.
@@ -247,17 +247,21 @@ func (n *Node) join(joinNode *models.Node) error {
 	}
 
 	if err != nil {
+
 		return err
 	}
 	n.succMtx.Lock()
 	n.successor = succ
 	n.succMtx.Unlock()
 	fmt.Println("successor...", succ.Addr)
+
+	// 改为放到Notify()里面，周期调用。。。
 	// 刚加入节点，找到successor后，马上转移数据
 	// 直接从succ上拉取数据，而不用先找predecessor
-	if n.successor != nil && n.predecessor != nil {
-		n.transferKeys(n.successor, n.Node)
-	}
+	// if n.successor != nil {
+	// 	fmt.Println("join transfer keys from...", succ.Addr)
+	// 	n.transferKeys(n.successor, n.Node)
+	// }
 
 	return nil
 }
@@ -335,7 +339,7 @@ func (n *Node) delete(key string) error {
 	return err
 }
 
-//已验证逻辑，并做修改
+// 已验证逻辑，并做修改
 // 感觉transfer是增加节点时从succ节点转移数据用的
 // 从succ把pred到n之间的数据转移到n上
 //论文里面节点的退出归类为节点崩溃的一种。
@@ -344,7 +348,10 @@ func (n *Node) transferKeys(pred, succ *models.Node) {
 	//修改为将(n.Id, pred.Id)之间的key从succ转移到n上
 	keys, err := n.requestKeys(pred, n.Node)
 	if len(keys) > 0 {
-		fmt.Println("transfering: ", keys, err)
+		for _, item := range keys {
+			fmt.Println("transfering key,value: ", item.Key, item.Value, err)
+		}
+
 	}
 	delKeyList := make([]string, 0, 10)
 	// store the keys in current node
@@ -362,8 +369,36 @@ func (n *Node) transferKeys(pred, succ *models.Node) {
 	if len(delKeyList) > 0 {
 		n.deleteKeys(succ, delKeyList)
 	}
-
 }
+
+// func (n *Node) transferKeys(predpred, pred *models.Node) {
+// 	fmt.Println("transferKeys()...predpred, pred ", predpred.Addr, pred.Addr)
+// 	//修改为将(n.Id, pred.Id)之间的key从succ转移到n上
+// 	keys, err := n.storage.Between(predpred.Id, pred.Id)
+// 	if len(keys) > 0 {
+// 		for _, item := range keys {
+// 			fmt.Println("transfering key,value: ", item.Key, item.Value, err)
+// 		}
+// 	}
+// 	delKeyList := make([]string, 0, 10)
+// 	// store the keys in current node
+// 	for _, item := range keys {
+// 		if item == nil {
+// 			continue
+// 		}
+// 		err := n.setKeyRPC(pred, item.Key, item.Value)
+// 		if err != nil {
+// 			fmt.Println("error transfering key: ", item.Key, pred.Addr)
+// 		}
+// 		delKeyList = append(delKeyList, item.Key)
+// 	}
+// 	// delete the keys from the current node.
+// 	if len(delKeyList) > 0 {
+// 		for i := range delKeyList {
+// 			n.storage.Delete(delKeyList[i])
+// 		}
+// 	}
+// }
 
 //已验证逻辑，并做修改
 // 实现Node删除时将Node上的所有数据转移给其successor
@@ -373,7 +408,7 @@ func (n *Node) moveKeysFromLocal(fromNode, toNode *models.Node) {
 	keys, err := n.storage.Between(fromNode.Id, toNode.Id)
 	if len(keys) > 0 {
 		for _, item := range keys {
-			fmt.Println("transfering key,value: ", item.Key, item.Value, err)
+			fmt.Println("transfering key: ", item.Key, err)
 		}
 
 	}
@@ -635,7 +670,7 @@ func (n *Node) SetSuccessor(ctx context.Context, succ *models.Node) (*models.ER,
 	n.succMtx.Lock()
 	n.successor = succ
 	n.succMtx.Unlock()
-	fmt.Println("successor...", n.successor.Addr)
+	fmt.Println("successor......", n.successor.Addr)
 	return emptyRequest, nil
 }
 
@@ -644,7 +679,7 @@ func (n *Node) SetPredecessor(ctx context.Context, pred *models.Node) (*models.E
 	n.predMtx.Lock()
 	n.predecessor = pred
 	n.predMtx.Unlock()
-	fmt.Println("predecessor...", n.predecessor.Addr)
+	fmt.Println("predecessor......", n.predecessor.Addr)
 	return emptyRequest, nil
 }
 
@@ -683,26 +718,27 @@ func (n *Node) Notify(ctx context.Context, node *models.Node) (*models.ER, error
 	n.predMtx.Lock()
 	defer n.predMtx.Unlock()
 	//prevPredNode记录的更新n.predecessor后，之前的n.predecessor
-	// var prevPredNode *models.Node
+	var prevPredNode *models.Node
 
 	pred := n.predecessor
 	//若此时n没有前序节点或
 	//node.Id比n现有的前序节点pred.Id更加靠近n，则将node设置为n的前序节点
 	if pred == nil || between(node.Id, pred.Id, n.Id) {
-		fmt.Println("predecessor", node.Addr)
-		// if n.predecessor != nil {
-		// 	prevPredNode = n.predecessor
-		// }
+		fmt.Println("predecessor...", node.Addr)
+		if n.predecessor != nil {
+			prevPredNode = n.predecessor
+		}
 		n.predecessor = node
 
 		// 增加节点时transfer key的工作什么时候由哪个函数做？？？这里有问题
 		// 应该是新节点的Notify函数调用transfer_Keys！！！
 		// transfer keys from current node to node's predecessor
-		// if prevPredNode != nil {
-		// 	if between(n.predecessor.Id, prevPredNode.Id, n.Id) {
-		// 		n.transferKeys(prevPredNode, n.predecessor)
-		// 	}
-		// }
+		if prevPredNode != nil {
+			if between(n.predecessor.Id, prevPredNode.Id, n.Id) {
+				fmt.Println("transferKeys() to", n.predecessor.Addr)
+				n.moveKeysFromLocal(prevPredNode, n.predecessor)
+			}
+		}
 	}
 
 	return emptyRequest, nil
@@ -722,7 +758,9 @@ func (n *Node) XGet(ctx context.Context, req *models.GetRequest) (*models.GetRes
 func (n *Node) XSet(ctx context.Context, req *models.SetRequest) (*models.SetResponse, error) {
 	n.stMtx.Lock()
 	defer n.stMtx.Unlock()
-	fmt.Println("setting key on ", n.Node.Addr, req.Key, req.Value)
+	// fmt.Println("setting key on ", n.Node.Addr, req.Key, req.Value)
+	fmt.Println("setting key on ", n.Node.Addr, " key:", req.Key)
+
 	err := n.storage.Set(req.Key, req.Value)
 	return emptySetResponse, err
 }
