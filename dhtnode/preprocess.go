@@ -111,15 +111,7 @@ func (ch *dht_node) main() {
 			if msg.configMsg == nil {
 				// NormalMsg
 
-				// // ProcessMsg必须放在orderer节点上做
-
-				// if msg.configSeq < seq {
 				// 	_, err = ch.support.ProcessNormalMsg(msg.normalMsg)
-				// 	if err != nil {
-				// 		logger.Warningf("Discarding bad normal message: %s", err)
-				// 		continue
-				// 	}
-				// }
 
 				// 将要打包成一个块的msg存到一个batch里
 				batches, pending := ch.Ordered(msg.normalMsg)
