@@ -4,11 +4,12 @@ import (
 	"fmt"
 	"time"
 
-	cb "github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/common/channelconfig"
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/protoutil"
 	"google.golang.org/protobuf/proto"
+
+	"./bridge"
 )
 
 var logger = flogging.MustGetLogger("orderer.consensus.dht")
@@ -19,17 +20,19 @@ type OrdererConfigFetcher interface {
 
 type message struct {
 	configSeq uint64
-	normalMsg *cb.Envelope
-	configMsg *cb.Envelope
+	normalMsg *bridge.Envelope
+	configMsg *bridge.Envelope
 }
 
 type dht_node struct {
+	*bridge.UnimplementedChordServer
+
 	blockPivot   bool // 是否为node0
 	pivotAddress string
 	// node0独有
-	lastblock    *cb.Block      // bw.lastBlock.Header.Number, previousBlockHash
-	preblockChan chan *cb.Block //in
-	blockChan    chan *cb.Block // out
+	lastblock    *bridge.Block      // bw.lastBlock.Header.Number, previousBlockHash
+	preblockChan chan *bridge.Block //in
+	blockChan    chan *bridge.Block // out
 	// 加工block用
 	sendChan chan *message // in
 	exitChan chan struct{}
@@ -37,7 +40,7 @@ type dht_node struct {
 
 	// 以下各个需要从orderer获取，如何获取？？？
 	sharedConfigFetcher   OrdererConfigFetcher
-	pendingBatch          []*cb.Envelope
+	pendingBatch          []*bridge.Envelope
 	pendingBatchSizeBytes uint32
 
 	PendingBatchStartTime time.Time
@@ -57,8 +60,8 @@ func new_dht_node(bp bool) *dht_node {
 		sendChan:     make(chan *message),
 		exitChan:     make(chan struct{}),
 		retChan:      make(chan *message),
-		preblockChan: make(chan *cb.Block),
-		blockChan:    make(chan *cb.Block),
+		preblockChan: make(chan *bridge.Block),
+		blockChan:    make(chan *bridge.Block),
 	}
 }
 
@@ -159,7 +162,7 @@ func (ch *dht_node) main() {
 					ch.retChan <- block
 				}
 
-				block := ch.PreCreateNextBlock([]*cb.Envelope{msg.configMsg})
+				block := ch.PreCreateNextBlock([]*bridge.Envelope{msg.configMsg})
 				ch.retChan <- block
 				// ch.support.WriteConfigBlock(block, nil)
 				timer = nil
@@ -185,10 +188,10 @@ func (ch *dht_node) main() {
 }
 
 // CreateNextBlock creates a new block with the next block number, and the given contents.
-func (dn *dht_node) PreCreateNextBlock(messages []*cb.Envelope) *cb.Block {
+func (dn *dht_node) PreCreateNextBlock(messages []*bridge.Envelope) *bridge.Block {
 	// previousBlockHash := protoutil.BlockHeaderHash(bw.lastBlock.Header)
 
-	data := &cb.BlockData{
+	data := &bridge.BlockData{
 		Data: make([][]byte, len(messages)),
 	}
 
@@ -202,19 +205,19 @@ func (dn *dht_node) PreCreateNextBlock(messages []*cb.Envelope) *cb.Block {
 
 	// protoutiles/blockutiles.go
 	// 	// NewBlock constructs a block with no data and no metadata.
-	// func NewBlock(seqNum uint64, previousHash []byte) *cb.Block {
-	// 	block := &cb.Block{}
-	// 	block.Header = &cb.BlockHeader{}
+	// func NewBlock(seqNum uint64, previousHash []byte) *bridge.Block {
+	// 	block := &bridge.Block{}
+	// 	block.Header = &bridge.BlockHeader{}
 	// 	block.Header.Number = seqNum
 	// 	block.Header.PreviousHash = previousHash
 	// 	block.Header.DataHash = []byte{}
-	// 	block.Data = &cb.BlockData{}
+	// 	block.Data = &bridge.BlockData{}
 
 	// 	var metadataContents [][]byte
-	// 	for i := 0; i < len(cb.BlockMetadataIndex_name); i++ {
+	// 	for i := 0; i < len(bridge.BlockMetadataIndex_name); i++ {
 	// 		metadataContents = append(metadataContents, []byte{})
 	// 	}
-	// 	block.Metadata = &cb.BlockMetadata{Metadata: metadataContents}
+	// 	block.Metadata = &bridge.BlockMetadata{Metadata: metadataContents}
 
 	// 	return block
 	// }
@@ -231,7 +234,7 @@ func (dn *dht_node) PreCreateNextBlock(messages []*cb.Envelope) *cb.Block {
 func (dn *dht_node) CreateNextBlock() error {
 	previousBlockHash := protoutil.BlockHeaderHash(dn.lastblock.Header)
 	// block := protoutil.NewBlock(0, 0) // 改
-	var block *cb.Block
+	var block *bridge.Block
 	for {
 		select {
 		case block <- dn.preblockChan:
@@ -272,7 +275,7 @@ func (dn *dht_node) ReceiveMsg() error {
 
 // preblock: other nodes -> node0
 func (dn *dht_node) SendBlock() error {
-	var preblock *cb.Block
+	var preblock *bridge.Block
 	// 从retChan获得preblock
 	select {
 	case preblock <- dn.retChan:
@@ -288,7 +291,7 @@ func (dn *dht_node) SendBlock() error {
 
 // block: node0 -> orderer
 func (dn *dht_node) ReturnBlock() error {
-	var block *cb.Block
+	var block *bridge.Block
 	for {
 		select {
 		case block <- dn.blockChan:
@@ -315,7 +318,7 @@ func (dn *dht_node) ReturnBlock() error {
 //   - impossible
 //
 // Note that messageBatches can not be greater than 2.
-func (r *dht_node) Ordered(msg *cb.Envelope) (messageBatches [][]*cb.Envelope, pending bool) {
+func (r *dht_node) Ordered(msg *bridge.Envelope) (messageBatches [][]*bridge.Envelope, pending bool) {
 	if len(r.pendingBatch) == 0 {
 		// We are beginning a new batch, mark the time
 		r.PendingBatchStartTime = time.Now()
@@ -339,7 +342,7 @@ func (r *dht_node) Ordered(msg *cb.Envelope) (messageBatches [][]*cb.Envelope, p
 		}
 
 		// create new batch with single message
-		messageBatches = append(messageBatches, []*cb.Envelope{msg})
+		messageBatches = append(messageBatches, []*bridge.Envelope{msg})
 
 		// Record that this batch took no time to fill
 		r.Metrics.BlockFillDuration.With("channel", r.ChannelID).Observe(0)
@@ -373,7 +376,7 @@ func (r *dht_node) Ordered(msg *cb.Envelope) (messageBatches [][]*cb.Envelope, p
 }
 
 // Cut returns the current batch and starts a new one
-func (r *dht_node) Cut() []*cb.Envelope {
+func (r *dht_node) Cut() []*bridge.Envelope {
 	if r.pendingBatch != nil {
 		r.Metrics.BlockFillDuration.With("channel", r.ChannelID).Observe(time.Since(r.PendingBatchStartTime).Seconds())
 	}
@@ -384,6 +387,6 @@ func (r *dht_node) Cut() []*cb.Envelope {
 	return batch
 }
 
-func messageSizeBytes(message *cb.Envelope) uint32 {
+func messageSizeBytes(message *bridge.Envelope) uint32 {
 	return uint32(len(message.Payload) + len(message.Signature))
 }
