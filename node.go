@@ -98,7 +98,7 @@ func NewNode(cnf *Config, joinNode *models.Node) (*Node, error) {
 	} else {
 		nID = cnf.Addr
 	}
-	id, err := node.hashKey(nID)
+	id, err := node.HashKey([]byte(nID))
 	if err != nil {
 		return nil, err
 	}
@@ -120,8 +120,6 @@ func NewNode(cnf *Config, joinNode *models.Node) (*Node, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	node.transport = transport
 
 	models.RegisterChordServer(transport.server, node)
 
@@ -217,9 +215,9 @@ type Node struct {
 	lastStablized time.Time
 }
 
-func (n *Node) hashKey(key string) ([]byte, error) {
+func (n *Node) HashKey(key []byte) ([]byte, error) {
 	h := n.cnf.Hash()
-	if _, err := h.Write([]byte(key)); err != nil {
+	if _, err := h.Write(key); err != nil {
 		return nil, err
 	}
 	val := h.Sum(nil)
@@ -288,25 +286,25 @@ func (n *Node) join(joinNode *models.Node) error {
 	Client本地调用
 */
 
-func (n *Node) Find(key string) (*models.Node, error) {
+func (n *Node) Find(key []byte) (*models.Node, error) {
 	return n.locate(key)
 }
 
-func (n *Node) Get(key string) ([]byte, error) {
+func (n *Node) Get(key []byte) ([]byte, error) {
 	return n.get(key)
 }
-func (n *Node) Set(key, value string) error {
+func (n *Node) Set(key, value []byte) error {
 	return n.set(key, value)
 }
-func (n *Node) Delete(key string) error {
+func (n *Node) Delete(key []byte) error {
 	return n.delete(key)
 }
 
 /*
 	Finds the node for the key
 */
-func (n *Node) locate(key string) (*models.Node, error) {
-	id, err := n.hashKey(key)
+func (n *Node) locate(key []byte) (*models.Node, error) {
+	id, err := n.HashKey(key)
 	if err != nil {
 		return nil, err
 	}
@@ -314,7 +312,7 @@ func (n *Node) locate(key string) (*models.Node, error) {
 	return succ, err
 }
 
-func (n *Node) get(key string) ([]byte, error) {
+func (n *Node) get(key []byte) ([]byte, error) {
 	node, err := n.locate(key)
 	if err != nil {
 		return nil, err
@@ -326,7 +324,7 @@ func (n *Node) get(key string) ([]byte, error) {
 	return val.Value, nil
 }
 
-func (n *Node) set(key, value string) error {
+func (n *Node) set(key, value []byte) error {
 	node, err := n.locate(key)
 	if err != nil {
 		return err
@@ -335,7 +333,7 @@ func (n *Node) set(key, value string) error {
 	return err
 }
 
-func (n *Node) delete(key string) error {
+func (n *Node) delete(key []byte) error {
 	node, err := n.locate(key)
 	if err != nil {
 		return err
@@ -640,13 +638,13 @@ func (n *Node) notifyRPC(node, pred *models.Node) error {
 	return n.transport.Notify(node, pred)
 }
 
-func (n *Node) getKeyRPC(node *models.Node, key string) (*models.GetResponse, error) {
+func (n *Node) getKeyRPC(node *models.Node, key []byte) (*models.GetResponse, error) {
 	return n.transport.GetKey(node, key)
 }
-func (n *Node) setKeyRPC(node *models.Node, key, value string) error {
+func (n *Node) setKeyRPC(node *models.Node, key, value []byte) error {
 	return n.transport.SetKey(node, key, value)
 }
-func (n *Node) deleteKeyRPC(node *models.Node, key string) error {
+func (n *Node) deleteKeyRPC(node *models.Node, key []byte) error {
 	return n.transport.DeleteKey(node, key)
 }
 

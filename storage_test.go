@@ -34,7 +34,7 @@ func Test_mapStore_hashKey(t *testing.T) {
 		Hash func() hash.Hash
 	}
 	type args struct {
-		key string
+		key []byte
 	}
 	tests := []struct {
 		name    string
@@ -69,7 +69,7 @@ func Test_mapStore_Get(t *testing.T) {
 		Hash func() hash.Hash
 	}
 	type args struct {
-		key string
+		key []byte
 	}
 	tests := []struct {
 		name    string
@@ -134,7 +134,7 @@ func Test_mapStore_Delete(t *testing.T) {
 		Hash func() hash.Hash
 	}
 	type args struct {
-		key string
+		key []byte
 	}
 	tests := []struct {
 		name    string

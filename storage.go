@@ -31,7 +31,7 @@ type mapStore struct {
 }
 
 // 计算key的hash值
-func (a *mapStore) hashKey(key string) ([]byte, error) {
+func (a *mapStore) hashKey(key []byte) ([]byte, error) {
 	h := a.Hash()
 	if _, err := h.Write([]byte(key)); err != nil {
 		return nil, err
@@ -41,7 +41,7 @@ func (a *mapStore) hashKey(key string) ([]byte, error) {
 }
 
 // 返回存在的key的数据值
-func (a *mapStore) Get(key string) ([]byte, error) {
+func (a *mapStore) Get(key []byte) ([]byte, error) {
 	val, ok := a.data[key]
 	if !ok {
 		return nil, ERR_KEY_NOT_FOUND
@@ -56,7 +56,7 @@ func (a *mapStore) Set(key, value string) error {
 }
 
 // 从mapStore的data中删除键为key的映射记录
-func (a *mapStore) Delete(key string) error {
+func (a *mapStore) Delete(key []byte) error {
 	delete(a.data, key)
 	return nil
 }

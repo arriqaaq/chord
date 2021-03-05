@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/zebra-uestc/chord"
+	"github.com/zebra-uestc/chord/dhtnode/bridge"
 	"net"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"./bridge"
 	// "github.com/hyperledger/fabric/orderer/consensus/dht/bridge"
 	"google.golang.org/grpc"
 )
@@ -30,7 +31,7 @@ func Dial(addr string, opts ...grpc.DialOption) (*grpc.ClientConn, error) {
 	return grpc.Dial(addr, opts...)
 }
 
-type Transport interface {
+type dhtTransport interface {
 	Start() error
 	Stop() error
 
@@ -41,9 +42,10 @@ type Transport interface {
 	TransMsgClient(msg *bridge.Msg) error
 }
 
-type GrpcTransport struct {
-	config *TransportConfig // node0地址等信息
-	*bridge.UnimplementedBridgeServer
+type GrpcdhtTransport struct {
+	dhtconfig *DhtConfig // node0地址等信息
+	config    *chord.Config
+	*bridge.UnimplementedBridgeToOrderServer
 	timeout time.Duration
 	maxIdle time.Duration
 
@@ -57,7 +59,7 @@ type GrpcTransport struct {
 	shutdown int32
 }
 
-func NewGrpcTransport(config *TransportConfig) (*GrpcTransport, error) {
+func NewGrpcdhtTransport(config *chord.Config) (*GrpcdhtTransport, error) {
 
 	addr := config.Addr
 	// Try to start the listener
@@ -68,8 +70,8 @@ func NewGrpcTransport(config *TransportConfig) (*GrpcTransport, error) {
 
 	pool := make(map[string]*grpcConn)
 
-	// Setup the transport
-	grp := &GrpcTransport{
+	// Setup the dhtTransport
+	grp := &GrpcdhtTransport{
 		sock:    listener.(*net.TCPListener),
 		timeout: config.Timeout,
 		maxIdle: config.MaxIdle,
@@ -94,16 +96,16 @@ func (g *grpcConn) Close() {
 	g.conn.Close()
 }
 
-func (g *GrpcTransport) registerChain(chain *chain) {
+func (g *GrpcdhtTransport) registerChain(chain *chain) {
 	bridge.RegisterBridgedServer(g.server, chain)
 }
 
-func (g *GrpcTransport) GetServer() *grpc.Server {
+func (g *GrpcdhtTransport) GetServer() *grpc.Server {
 	return g.server
 }
 
 // Gets an outbound connection to a host
-func (g *GrpcTransport) getConn(
+func (g *GrpcdhtTransport) getConn(
 	addr string,
 ) (bridge.BridgeClient, error) {
 
@@ -111,7 +113,7 @@ func (g *GrpcTransport) getConn(
 
 	if atomic.LoadInt32(&g.shutdown) == 1 {
 		g.poolMtx.Unlock()
-		return nil, fmt.Errorf("TCP transport is shutdown")
+		return nil, fmt.Errorf("TCP dhtTransport is shutdown")
 	}
 
 	cc, ok := g.pool[addr]
@@ -140,7 +142,7 @@ func (g *GrpcTransport) getConn(
 	return client, nil
 }
 
-func (g *GrpcTransport) Start() error {
+func (g *GrpcdhtTransport) Start() error {
 	// Start RPC server
 	go g.listen()
 
@@ -152,7 +154,7 @@ func (g *GrpcTransport) Start() error {
 }
 
 // Returns an outbound TCP connection to the pool
-func (g *GrpcTransport) returnConn(o *grpcConn) {
+func (g *GrpcdhtTransport) returnConn(o *grpcConn) {
 	// Update the last asctive time
 	o.lastActive = time.Now()
 
@@ -166,8 +168,8 @@ func (g *GrpcTransport) returnConn(o *grpcConn) {
 	g.pool[o.addr] = o
 }
 
-// Shutdown the TCP transport
-func (g *GrpcTransport) Stop() error {
+// Shutdown the TCP dhtTransport
+func (g *GrpcdhtTransport) Stop() error {
 	atomic.StoreInt32(&g.shutdown, 1)
 
 	// Close all the connections
@@ -185,7 +187,7 @@ func (g *GrpcTransport) Stop() error {
 }
 
 // Closes old outbound connections
-func (g *GrpcTransport) reapOld() {
+func (g *GrpcdhtTransport) reapOld() {
 	ticker := time.NewTicker(60 * time.Second)
 
 	for {
@@ -200,7 +202,7 @@ func (g *GrpcTransport) reapOld() {
 	}
 }
 
-func (g *GrpcTransport) reap() {
+func (g *GrpcdhtTransport) reap() {
 	g.poolMtx.Lock()
 	defer g.poolMtx.Unlock()
 	for host, conn := range g.pool {
@@ -212,7 +214,7 @@ func (g *GrpcTransport) reap() {
 }
 
 // Listens for inbound connections
-func (g *GrpcTransport) listen() {
+func (g *GrpcdhtTransport) listen() {
 	g.server.Serve(g.sock)
 }
 
@@ -222,7 +224,7 @@ func (g *GrpcTransport) listen() {
 // rpc LoadConfig(Status) returns (Config){};
 
 // server端
-func (c *GrpcTransport) LoadConfig(ctx context.Context, s *bridge.Status) (*bridge.Config, error) {
+func (c *GrpcdhtTransport) LoadConfig(ctx context.Context, s *bridge.Status) (*bridge.Config, error) {
 	s := emptyStatus
 	cnf = emptyConfig
 	var err error
@@ -231,7 +233,7 @@ func (c *GrpcTransport) LoadConfig(ctx context.Context, s *bridge.Status) (*brid
 	return cnf, s
 }
 
-func (g *GrpcTransport) TransBlock(tx context.Context, block *bridge.Block) error {
+func (g *GrpcdhtTransport) TransBlock(tx context.Context, block *bridge.Block) error {
 	s := emptyStatus
 	var err error
 	// 把收到的block送入channel。在dht.go里面从channel取出进行writeblock！！！
@@ -239,7 +241,7 @@ func (g *GrpcTransport) TransBlock(tx context.Context, block *bridge.Block) erro
 }
 
 // client端
-func (g *GrpcTransport) TransMsgClient(msg *bridge.Msg) error {
+func (g *GrpcdhtTransport) TransMsgClient(msg *bridge.Msg) error {
 	client, err := g.getConn(g.config.Addr)
 	if err != nil {
 		return err

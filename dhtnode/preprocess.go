@@ -2,14 +2,13 @@ package dhtnode
 
 import (
 	"fmt"
+	"github.com/zebra-uestc/chord/dhtnode/bridge"
 	"time"
 
 	"github.com/hyperledger/fabric/common/channelconfig"
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/protoutil"
 	"google.golang.org/protobuf/proto"
-
-	"./bridge"
 )
 
 var logger = flogging.MustGetLogger("orderer.consensus.dht")
@@ -24,46 +23,46 @@ type message struct {
 	configMsg *bridge.Envelope
 }
 
-type dht_node struct {
-	//*bridge.UnimplementedChordServer
-
-	blockPivot   bool // 是否为node0
-	pivotAddress string
-	// node0独有
-	//lastblock    *bridge.Block      // bw.lastBlock.Header.Number, previousBlockHash
-	//preblockChan chan *bridge.Block //in
-	//blockChan    chan *bridge.Block // out
-	//// 加工block用
-	//sendChan chan *message // in
-	//exitChan chan struct{}
-	//retChan  chan *message // out
-	//
-	//// 以下各个需要从orderer获取，如何获取？？？
-	//sharedConfigFetcher   OrdererConfigFetcher
-	//pendingBatch          []*bridge.Envelope
-	//pendingBatchSizeBytes uint32
-	//
-	//PendingBatchStartTime time.Time
-	//ChannelID             string
-	//Metrics               *Metrics
-}
+//type dht_node struct {
+//	//*bridge.UnimplementedChordServer
+//
+//	blockPivot   bool // 是否为node0
+//	pivotAddress string
+//	// node0独有
+//	//lastblock    *bridge.Block      // bw.lastBlock.Header.Number, previousBlockHash
+//	//preblockChan chan *bridge.Block //in
+//	//blockChan    chan *bridge.Block // out
+//	//// 加工block用
+//	//sendChan chan *message // in
+//	//exitChan chan struct{}
+//	//retChan  chan *message // out
+//	//
+//	//// 以下各个需要从orderer获取，如何获取？？？
+//	//sharedConfigFetcher   OrdererConfigFetcher
+//	//pendingBatch          []*bridge.Envelope
+//	//pendingBatchSizeBytes uint32
+//	//
+//	//PendingBatchStartTime time.Time
+//	//ChannelID             string
+//	//Metrics               *Metrics
+//}
 
 // New creates a new consenter for the solo consensus scheme.
 // The solo consensus scheme is very simple, and allows only one consenter for a given dht_node (this process).
 // It accepts messages being delivered via Order/Configure, orders them, and then uses the blockcutter to form the messages
 // into blocks before writing to the given ledger
 
-func new_dht_node(bp bool) *dht_node {
-	return &dht_node{
-		blockPivot:   bp,
-		pivotAddress: "",
-		sendChan:     make(chan *message),
-		exitChan:     make(chan struct{}),
-		retChan:      make(chan *message),
-		preblockChan: make(chan *bridge.Block),
-		blockChan:    make(chan *bridge.Block),
-	}
-}
+//func new_dht_node(bp bool) *dht_node {
+//	return &dht_node{
+//		blockPivot:   bp,
+//		pivotAddress: "",
+//		sendChan:     make(chan *message),
+//		exitChan:     make(chan struct{}),
+//		retChan:      make(chan *message),
+//		preblockChan: make(chan *bridge.Block),
+//		blockChan:    make(chan *bridge.Block),
+//	}
+//}
 
 func (ch *dht_node) Start(bp bool) {
 	new_dht_node(bp)

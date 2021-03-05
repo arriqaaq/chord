@@ -48,7 +48,7 @@ func between(key, a, b []byte) bool {
 }
 
 // For testing
-func GetHashID(key string) []byte {
+func GetHashID(key []byte) []byte {
 	h := sha1.New()
 	if _, err := h.Write([]byte(key)); err != nil {
 		return nil
