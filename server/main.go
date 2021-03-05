@@ -24,6 +24,7 @@ func createMainNode(id string, addr string) (*dhtnode.MainNode, error) {
 }
 
 func createNode(id string, addr string, sister *models.Node) (*dhtnode.DhtNode, error) {
+	node, err := chord.NewNode(cnf, joinNode)
 
 	cnf := chord.DefaultConfig()
 	cnf.Id = id
@@ -56,7 +57,7 @@ func Main() {
 	}
 	//根据主节点创建其他节点，构成哈希环
 	for index, address := range addresses {
-		_, err := createNode(string(index+1), address, sister.Node)
+		_, err := createNode(string(index+1), address, sister.Node.Node)
 		if err != nil {
 			log.Fatalln(err)
 		}

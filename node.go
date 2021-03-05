@@ -80,27 +80,16 @@ func NewInode(id string, addr string) *models.Node {
 // 已验证
 // 将单个节点(models.Node)按配置构造环上的节点(Node)，并加入chord环，启动该节点
 // 新加入的节点配置信息为cnf，joinNode为环上已join的父节点
-func NewNode(cnf *Config, joinNode *models.Node) (*Node, error) {
-	if err := cnf.Validate(); err != nil {
-		return nil, err
-	}
-	//node实例化
-	node := &Node{
-		Node:       new(models.Node),
-		shutdownCh: make(chan struct{}),
-		cnf:        cnf,
-		storage:    NewMapStore(cnf.Hash),
-	}
-
+func InitNode(node *Node) error {
 	var nID string
-	if cnf.Id != "" {
-		nID = cnf.Id
+	if node.cnf.Id != "" {
+		nID = node.cnf.Id
 	} else {
-		nID = cnf.Addr
+		nID = node.cnf.Addr
 	}
 	id, err := node.HashKey([]byte(nID))
 	if err != nil {
-		return nil, err
+		return err
 	}
 	//func (z *Int) SetBytes(buf []byte) *Int 将20位byte数组转化为big int密钥形式
 	aInt := (&big.Int{}).SetBytes(id)
@@ -178,6 +167,18 @@ func NewNode(cnf *Config, joinNode *models.Node) (*Node, error) {
 		}
 	}()
 
+}
+func NewNode(cnf *Config, joinNode *models.Node) (*Node, error) {
+	if err := cnf.Validate(); err != nil {
+		return nil, err
+	}
+	//node实例化
+	node := &Node{
+		Node:       new(models.Node),
+		shutdownCh: make(chan struct{}),
+		cnf:        cnf,
+		storage:    NewMapStore(cnf.Hash),
+	}
 	return node, nil
 }
 
@@ -206,7 +207,7 @@ type Node struct {
 	fingerTable fingerTable
 	ftMtx       sync.RWMutex
 
-	storage Storage
+	Storage Storage
 	stMtx   sync.RWMutex
 
 	transport Transport

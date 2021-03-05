@@ -148,6 +148,7 @@ github.com/hyperledger/fabric v2.1.1+incompatible h1:cYYRv3vVg4kA6DmrixLxwn1nwBE
 github.com/hyperledger/fabric v2.1.1+incompatible/go.mod h1:tGFAOCT696D3rG0Vofd2dyWYLySHlh0aQjf7Q1HAju0=
 github.com/hyperledger/fabric-amcl v0.0.0-20200424173818-327c9e2cf77a h1:JAKZdGuUIjVmES0X31YUD7UqMR2rz/kxLluJuGvsXPk=
 github.com/hyperledger/fabric-amcl v0.0.0-20200424173818-327c9e2cf77a/go.mod h1:X+DIyUsaTmalOpmpQfIvFZjKHQedrURQ5t4YqquX7lE=
+github.com/hyperledger/fabric-protos v0.0.0-20210127161408-583e2aebe686 h1:h385uGt/cJZOovsiffZGeQ14DjyEfx9NPGeF8Fwey8o=
 github.com/hyperledger/fabric-protos-go v0.0.0-20210127161553-4f432a78f286 h1:cFLrvWUprlCbVixFkaeONNlUtbsjv3c20ujb4RJFBl8=
 github.com/hyperledger/fabric-protos-go v0.0.0-20210127161553-4f432a78f286/go.mod h1:xVYTjK4DtZRBxZ2D9aE4y6AbLaPwue2o/criQyQbVD0=
 github.com/jcmturner/aescts/v2 v2.0.0 h1:9YKLH6ey7H4eDBXW8khjYslgyqG2xZikXP0EQFKrle8=

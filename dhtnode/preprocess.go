@@ -1,13 +1,13 @@
 package dhtnode
 
 import (
-	"fmt"
+	"bytes"
+	"crypto/sha256"
 	"github.com/zebra-uestc/chord/dhtnode/bridge"
 	"time"
 
 	"github.com/hyperledger/fabric/common/channelconfig"
 	"github.com/hyperledger/fabric/common/flogging"
-	"github.com/hyperledger/fabric/protoutil"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -23,163 +23,18 @@ type message struct {
 	configMsg *bridge.Envelope
 }
 
-//type dht_node struct {
-//	//*bridge.UnimplementedChordServer
-//
-//	blockPivot   bool // 是否为node0
-//	pivotAddress string
-//	// node0独有
-//	//lastblock    *bridge.Block      // bw.lastBlock.Header.Number, previousBlockHash
-//	//preblockChan chan *bridge.Block //in
-//	//blockChan    chan *bridge.Block // out
-//	//// 加工block用
-//	//sendChan chan *message // in
-//	//exitChan chan struct{}
-//	//retChan  chan *message // out
-//	//
-//	//// 以下各个需要从orderer获取，如何获取？？？
-//	//sharedConfigFetcher   OrdererConfigFetcher
-//	//pendingBatch          []*bridge.Envelope
-//	//pendingBatchSizeBytes uint32
-//	//
-//	//PendingBatchStartTime time.Time
-//	//ChannelID             string
-//	//Metrics               *Metrics
-//}
+type preprocess struct {
+	sharedConfigFetcher   OrdererConfigFetcher
+	pendingBatch          []*bridge.Envelope
+	pendingBatchSizeBytes uint32
 
-// New creates a new consenter for the solo consensus scheme.
-// The solo consensus scheme is very simple, and allows only one consenter for a given dht_node (this process).
-// It accepts messages being delivered via Order/Configure, orders them, and then uses the blockcutter to form the messages
-// into blocks before writing to the given ledger
-
-//func new_dht_node(bp bool) *dht_node {
-//	return &dht_node{
-//		blockPivot:   bp,
-//		pivotAddress: "",
-//		sendChan:     make(chan *message),
-//		exitChan:     make(chan struct{}),
-//		retChan:      make(chan *message),
-//		preblockChan: make(chan *bridge.Block),
-//		blockChan:    make(chan *bridge.Block),
-//	}
-//}
-
-func (ch *dht_node) Start(bp bool) {
-	new_dht_node(bp)
-	// 启动node
-	go ch.main()
-	// 判断是否为node0，并启动pivot
-	for ch.blockPivot == false {
-	}
-	go ch.StartPivot()
-
-}
-
-func (dn *dht_node) StartPivot() {
-	go dn.CreateNextBlock()
-	go dn.ReturnBlock()
-}
-
-func (ch *dht_node) Halt() {
-	select {
-	case <-ch.exitChan:
-		// Allow multiple halts without panic
-	default:
-		close(ch.exitChan)
-	}
-}
-
-func (ch *dht_node) WaitReady() error {
-	return nil
-}
-
-// Errored only closes on exit
-func (ch *dht_node) Errored() <-chan struct{} {
-	return ch.exitChan
-}
-
-func (ch *dht_node) main() {
-	var timer <-chan time.Time
-	var err error
-
-	for {
-		// seq := ch.support.Sequence()
-		err = nil
-		select {
-		case msg := <-ch.sendChan:
-			if msg.configMsg == nil {
-				// NormalMsg
-
-				// 	_, err = ch.support.ProcessNormalMsg(msg.normalMsg)
-
-				// 将要打包成一个块的msg存到一个batch里
-				batches, pending := ch.Ordered(msg.normalMsg)
-				// 修改Pre打包逻辑
-				for _, batch := range batches {
-					// block := ch.support.CreateNextBlock(batch)
-					// ch.support.WriteBlock(block, nil)
-					block := ch.PreCreateNextBlock(batch)
-					ch.retChan <- block
-				}
-
-				switch {
-				case timer != nil && !pending:
-					// Timer is already running but there are no messages pending, stop the timer
-					timer = nil
-				case timer == nil && pending:
-					// Timer is not already running and there are messages pending, so start it
-					timer = time.After(ch.support.SharedConfig().BatchTimeout())
-					logger.Debugf("Just began %s batch timer", ch.support.SharedConfig().BatchTimeout().String())
-				default:
-					// Do nothing when:
-					// 1. Timer is already running and there are messages pending
-					// 2. Timer is not set and there are no messages pending
-				}
-
-			} else {
-				// ConfigMsg
-				// if msg.configSeq < seq {
-				// 	msg.configMsg, _, err = ch.support.ProcessConfigMsg(msg.configMsg)
-				// 	if err != nil {
-				// 		logger.Warningf("Discarding bad config message: %s", err)
-				// 		continue
-				// 	}
-				// }
-				batch := ch.Cut()
-				if batch != nil {
-					// block := ch.support.CreateNextBlock(batch)
-					block := ch.PreCreateNextBlock(batch)
-					// ch.support.WriteBlock(block, nil)
-					ch.retChan <- block
-				}
-
-				block := ch.PreCreateNextBlock([]*bridge.Envelope{msg.configMsg})
-				ch.retChan <- block
-				// ch.support.WriteConfigBlock(block, nil)
-				timer = nil
-			}
-		case <-timer:
-			//clear the timer
-			timer = nil
-
-			batch := ch.Cut()
-			if len(batch) == 0 {
-				logger.Warningf("Batch timer expired with no pending requests, this might indicate a bug")
-				continue
-			}
-			logger.Debugf("Batch timer expired, creating block")
-			block := ch.PreCreateNextBlock(batch)
-			ch.retChan <- block
-			// ch.support.WriteBlock(block, nil)
-		case <-ch.exitChan:
-			logger.Debugf("Exiting")
-			return
-		}
-	}
+	PendingBatchStartTime time.Time
+	ChannelID             string
+	Metrics               *Metrics
 }
 
 // CreateNextBlock creates a new block with the next block number, and the given contents.
-func (dn *dht_node) PreCreateNextBlock(messages []*bridge.Envelope) *bridge.Block {
+func (pr *preprocess) PreCreateNextBlock(messages []*bridge.Envelope) *bridge.Block {
 	// previousBlockHash := protoutil.BlockHeaderHash(bw.lastBlock.Header)
 
 	data := &bridge.BlockData{
@@ -194,103 +49,34 @@ func (dn *dht_node) PreCreateNextBlock(messages []*bridge.Envelope) *bridge.Bloc
 		}
 	}
 
-	// protoutiles/blockutiles.go
-	// 	// NewBlock constructs a block with no data and no metadata.
-	// func NewBlock(seqNum uint64, previousHash []byte) *bridge.Block {
-	// 	block := &bridge.Block{}
-	// 	block.Header = &bridge.BlockHeader{}
-	// 	block.Header.Number = seqNum
-	// 	block.Header.PreviousHash = previousHash
-	// 	block.Header.DataHash = []byte{}
-	// 	block.Data = &bridge.BlockData{}
-
-	// 	var metadataContents [][]byte
-	// 	for i := 0; i < len(bridge.BlockMetadataIndex_name); i++ {
-	// 		metadataContents = append(metadataContents, []byte{})
-	// 	}
-	// 	block.Metadata = &bridge.BlockMetadata{Metadata: metadataContents}
-
-	// 	return block
-	// }
-
 	// block := protoutil.NewBlock(bw.lastBlock.Header.Number+1, previousBlockHash)
-	block := protoutil.NewBlock(0, 0)
-	block.Header.DataHash = protoutil.BlockDataHash(data)
+	block := NewBlock(0, emptyPrevHash)
+	block.Header.DataHash = BlockDataHash(data)
 	block.Data = data
 
 	return block
 }
 
-// CreateNextBlock creates a new block with the next block number, and the given contents.
-func (dn *dht_node) CreateNextBlock() error {
-	previousBlockHash := protoutil.BlockHeaderHash(dn.lastblock.Header)
-	// block := protoutil.NewBlock(0, 0) // 改
-	var block *bridge.Block
-	for {
-		select {
-		case block <- dn.preblockChan:
-			if dn.lastblock != nil {
-				block.Header.Number = dn.lastblock.Header.Number + 1 // seqNum
-				block.Header.PreviousHash = previousBlockHash        // previousHash
-			} else {
-				block.Header.Number = 0       // seqNum
-				block.Header.PreviousHash = 0 // previousHash
-			}
-			dn.lastblock = block
-			dn.blockChan <- block
-		default:
-
-		}
-	}
-	return nil
+func BlockDataHash(b *bridge.BlockData) []byte {
+	sum := sha256.Sum256(bytes.Join(b.Data, nil))
+	return sum[:]
 }
 
-// msg: dht上某个node -> preblock加工
-func (dn *dht_node) ReceiveMsg() error {
-	// orderer->dht环->ReceiveMsg()
-	// 如何得到dht环node上的msg？？？
+func NewBlock(seqNum uint64, previousHash []byte) *bridge.Block {
+	block := &bridge.Block{}
+	block.Header = &bridge.BlockHeader{}
+	block.Header.Number = seqNum
+	block.Header.PreviousHash = previousHash
+	block.Header.DataHash = []byte{}
+	block.Data = &bridge.BlockData{}
 
-	// 转发到sendChan
-	select {
-	case dn.sendChan <- &message{
-		configSeq: configSeq,
-		normalMsg: env,
-	}:
-		return nil
-	case <-dn.exitChan:
-		return fmt.Errorf("Exiting")
+	var metadataContents [][]byte
+	for i := 0; i < len(bridge.BlockMetadataIndex_name); i++ {
+		metadataContents = append(metadataContents, []byte{})
 	}
+	block.Metadata = &bridge.BlockMetadata{Metadata: metadataContents}
 
-	return nil
-}
-
-// preblock: other nodes -> node0
-func (dn *dht_node) SendBlock() error {
-	var preblock *bridge.Block
-	// 从retChan获得preblock
-	select {
-	case preblock <- dn.retChan:
-		// 如何跨主机通讯，传输prevlock给node0？？？
-
-		return nil
-	case <-dn.exitChan:
-		return fmt.Errorf("Exiting")
-	}
-
-	return nil
-}
-
-// block: node0 -> orderer
-func (dn *dht_node) ReturnBlock() error {
-	var block *bridge.Block
-	for {
-		select {
-		case block <- dn.blockChan:
-			// 把block转发给orderer
-		default:
-
-		}
-	}
+	return block
 }
 
 // Ordered should be invoked sequentially as messages are ordered
@@ -309,13 +95,13 @@ func (dn *dht_node) ReturnBlock() error {
 //   - impossible
 //
 // Note that messageBatches can not be greater than 2.
-func (r *dht_node) Ordered(msg *bridge.Envelope) (messageBatches [][]*bridge.Envelope, pending bool) {
-	if len(r.pendingBatch) == 0 {
+func (pr *preprocess) Ordered(msg *bridge.Envelope) (messageBatches [][]*bridge.Envelope, pending bool) {
+	if len(pr.pendingBatch) == 0 {
 		// We are beginning a new batch, mark the time
-		r.PendingBatchStartTime = time.Now()
+		pr.PendingBatchStartTime = time.Now()
 	}
 
-	ordererConfig, ok := r.sharedConfigFetcher.OrdererConfig()
+	ordererConfig, ok := pr.sharedConfigFetcher.OrdererConfig()
 	if !ok {
 		logger.Panicf("Could not retrieve orderer config to query batch parameters, block cutting is not possible")
 	}
@@ -327,8 +113,8 @@ func (r *dht_node) Ordered(msg *bridge.Envelope) (messageBatches [][]*bridge.Env
 		logger.Debugf("The current message, with %v bytes, is larger than the preferred batch size of %v bytes and will be isolated.", messageSizeBytes, batchSize.PreferredMaxBytes)
 
 		// cut pending batch, if it has any messages
-		if len(r.pendingBatch) > 0 {
-			messageBatch := r.Cut()
+		if len(pr.pendingBatch) > 0 {
+			messageBatch := pr.Cut()
 			messageBatches = append(messageBatches, messageBatch)
 		}
 
@@ -336,29 +122,29 @@ func (r *dht_node) Ordered(msg *bridge.Envelope) (messageBatches [][]*bridge.Env
 		messageBatches = append(messageBatches, []*bridge.Envelope{msg})
 
 		// Record that this batch took no time to fill
-		r.Metrics.BlockFillDuration.With("channel", r.ChannelID).Observe(0)
+		pr.Metrics.BlockFillDuration.With("channel", pr.ChannelID).Observe(0)
 
 		return
 	}
 
-	messageWillOverflowBatchSizeBytes := r.pendingBatchSizeBytes+messageSizeBytes > batchSize.PreferredMaxBytes
+	messageWillOverflowBatchSizeBytes := pr.pendingBatchSizeBytes+messageSizeBytes > batchSize.PreferredMaxBytes
 
 	if messageWillOverflowBatchSizeBytes {
-		logger.Debugf("The current message, with %v bytes, will overflow the pending batch of %v bytes.", messageSizeBytes, r.pendingBatchSizeBytes)
+		logger.Debugf("The current message, with %v bytes, will overflow the pending batch of %v bytes.", messageSizeBytes, pr.pendingBatchSizeBytes)
 		logger.Debugf("Pending batch would overflow if current message is added, cutting batch now.")
-		messageBatch := r.Cut()
-		r.PendingBatchStartTime = time.Now()
+		messageBatch := pr.Cut()
+		pr.PendingBatchStartTime = time.Now()
 		messageBatches = append(messageBatches, messageBatch)
 	}
 
 	logger.Debugf("Enqueuing message into batch")
-	r.pendingBatch = append(r.pendingBatch, msg)
-	r.pendingBatchSizeBytes += messageSizeBytes
+	pr.pendingBatch = append(pr.pendingBatch, msg)
+	pr.pendingBatchSizeBytes += messageSizeBytes
 	pending = true
 
-	if uint32(len(r.pendingBatch)) >= batchSize.MaxMessageCount {
+	if uint32(len(pr.pendingBatch)) >= batchSize.MaxMessageCount {
 		logger.Debugf("Batch size met, cutting batch")
-		messageBatch := r.Cut()
+		messageBatch := pr.Cut()
 		messageBatches = append(messageBatches, messageBatch)
 		pending = false
 	}
@@ -367,14 +153,14 @@ func (r *dht_node) Ordered(msg *bridge.Envelope) (messageBatches [][]*bridge.Env
 }
 
 // Cut returns the current batch and starts a new one
-func (r *dht_node) Cut() []*bridge.Envelope {
-	if r.pendingBatch != nil {
-		r.Metrics.BlockFillDuration.With("channel", r.ChannelID).Observe(time.Since(r.PendingBatchStartTime).Seconds())
+func (pr *preprocess) Cut() []*bridge.Envelope {
+	if pr.pendingBatch != nil {
+		pr.Metrics.BlockFillDuration.With("channel", pr.ChannelID).Observe(time.Since(pr.PendingBatchStartTime).Seconds())
 	}
-	r.PendingBatchStartTime = time.Time{}
-	batch := r.pendingBatch
-	r.pendingBatch = nil
-	r.pendingBatchSizeBytes = 0
+	pr.PendingBatchStartTime = time.Time{}
+	batch := pr.pendingBatch
+	pr.pendingBatch = nil
+	pr.pendingBatchSizeBytes = 0
 	return batch
 }
 
