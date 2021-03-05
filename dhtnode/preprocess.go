@@ -25,27 +25,27 @@ type message struct {
 }
 
 type dht_node struct {
-	*bridge.UnimplementedChordServer
+	//*bridge.UnimplementedChordServer
 
 	blockPivot   bool // 是否为node0
 	pivotAddress string
 	// node0独有
-	lastblock    *bridge.Block      // bw.lastBlock.Header.Number, previousBlockHash
-	preblockChan chan *bridge.Block //in
-	blockChan    chan *bridge.Block // out
-	// 加工block用
-	sendChan chan *message // in
-	exitChan chan struct{}
-	retChan  chan *message // out
-
-	// 以下各个需要从orderer获取，如何获取？？？
-	sharedConfigFetcher   OrdererConfigFetcher
-	pendingBatch          []*bridge.Envelope
-	pendingBatchSizeBytes uint32
-
-	PendingBatchStartTime time.Time
-	ChannelID             string
-	Metrics               *Metrics
+	//lastblock    *bridge.Block      // bw.lastBlock.Header.Number, previousBlockHash
+	//preblockChan chan *bridge.Block //in
+	//blockChan    chan *bridge.Block // out
+	//// 加工block用
+	//sendChan chan *message // in
+	//exitChan chan struct{}
+	//retChan  chan *message // out
+	//
+	//// 以下各个需要从orderer获取，如何获取？？？
+	//sharedConfigFetcher   OrdererConfigFetcher
+	//pendingBatch          []*bridge.Envelope
+	//pendingBatchSizeBytes uint32
+	//
+	//PendingBatchStartTime time.Time
+	//ChannelID             string
+	//Metrics               *Metrics
 }
 
 // New creates a new consenter for the solo consensus scheme.

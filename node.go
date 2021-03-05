@@ -3,6 +3,7 @@ package chord
 import (
 	"crypto/sha1"
 	"fmt"
+	"github.com/zebra-uestc/chord/dhtnode"
 	"hash"
 	"math/big"
 	"sync"
@@ -180,6 +181,59 @@ func NewNode(cnf *Config, joinNode *models.Node) (*Node, error) {
 		}
 	}()
 
+	//接收来自orderer的交易
+	go func() {
+
+		// ticker := time.NewTicker(100 * time.Millisecond)
+		ticker := time.NewTicker(1 * time.Second)
+		for {
+			select {
+			case <-ticker.C:
+				// fmt.Println("fixFinger()...")
+				node.transferKeys()
+			case <-node.shutdownCh:
+				ticker.Stop()
+				return
+			}
+		}
+	}()
+
+	//接收来自privotnode的交易
+	go func() {
+
+		// ticker := time.NewTicker(100 * time.Millisecond)
+		ticker := time.NewTicker(1 * time.Second)
+		for {
+			select {
+			case <-ticker.C:
+				// fmt.Println("fixFinger()...")
+				node.transferKeys()
+			case <-node.shutdownCh:
+				ticker.Stop()
+				return
+			}
+		}
+	}()
+
+	//发送区块（发给privotNode或者privotNode发给orderer）
+	go func() {
+
+		// ticker := time.NewTicker(100 * time.Millisecond)
+		ticker := time.NewTicker(1 * time.Second)
+		for {
+			select {
+			case <-ticker.C:
+				// fmt.Println("fixFinger()...")
+				node.transferKeys()
+			case <-node.shutdownCh:
+				ticker.Stop()
+				return
+			}
+		}
+	}()
+
+
+
 	return node, nil
 }
 
@@ -193,6 +247,7 @@ func NewNode(cnf *Config, joinNode *models.Node) (*Node, error) {
 // }
 
 type Node struct {
+	*dhtnode.dht_node
 	*models.Node
 	*models.UnimplementedChordServer
 	cnf *Config
