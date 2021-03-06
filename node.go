@@ -2,6 +2,7 @@ package chord
 
 import (
 	"crypto/sha1"
+	"crypto/sha256"
 	"fmt"
 	"hash"
 	"math/big"
@@ -16,7 +17,7 @@ import (
 func DefaultConfig() *Config {
 	n := &Config{
 		//sha1.New的Hash function size=20
-		Hash:     sha1.New,
+		Hash:     sha256.New,
 		DialOpts: make([]grpc.DialOption, 0, 5),
 	}
 	// n.HashSize = n.Hash().Size()
@@ -80,14 +81,14 @@ func NewInode(id string, addr string) *models.Node {
 // 已验证
 // 将单个节点(models.Node)按配置构造环上的节点(Node)，并加入chord环，启动该节点
 // 新加入的节点配置信息为cnf，joinNode为环上已join的父节点
-func InitNode(node *Node) error {
+func InitNode(node *Node, joinNode *models.Node) error {
 	var nID string
 	if node.cnf.Id != "" {
 		nID = node.cnf.Id
 	} else {
 		nID = node.cnf.Addr
 	}
-	id, err := node.HashKey([]byte(nID))
+	id, err := node.hashKey([]byte(nID))
 	if err != nil {
 		return err
 	}
@@ -97,17 +98,17 @@ func InitNode(node *Node) error {
 	fmt.Printf("new node id %d, \n", aInt)
 
 	node.Node.Id = id
-	node.Node.Addr = cnf.Addr
+	node.Node.Addr = node.Cnf.Addr
 
 	// Populate finger table
-	node.fingerTable = newFingerTable(node.Node, cnf.HashSize)
+	node.fingerTable = newFingerTable(node.Node, node.Cnf.HashSize)
 	// node.fingerTable = newFingerTable(node.Node, 5)
 	// fmt.Println(node.FingerTableString())
 
 	// Start RPC server
-	transport, err := NewGrpcTransport(cnf)
+	transport, err := NewGrpcTransport(node.Cnf)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	models.RegisterChordServer(transport.server, node)
@@ -116,7 +117,7 @@ func InitNode(node *Node) error {
 
 	// 根据joinNode的finger表更新新加入的节点的后继节点succ
 	if err := node.join(joinNode); err != nil {
-		return nil, err
+		return err
 	}
 
 	// Peridoically stabilize the node.
@@ -166,18 +167,19 @@ func InitNode(node *Node) error {
 			}
 		}
 	}()
-
+	return err
 }
-func NewNode(cnf *Config, joinNode *models.Node) (*Node, error) {
-	if err := cnf.Validate(); err != nil {
+
+func NewNode(Cnf *Config, joinNode *models.Node) (*Node, error) {
+	if err := Cnf.Validate(); err != nil {
 		return nil, err
 	}
 	//node实例化
 	node := &Node{
 		Node:       new(models.Node),
 		shutdownCh: make(chan struct{}),
-		cnf:        cnf,
-		storage:    NewMapStore(cnf.Hash),
+		Cnf:        Cnf,
+		Storage:    NewMapStore(Cnf.Hash),
 	}
 	return node, nil
 }
@@ -194,7 +196,7 @@ func NewNode(cnf *Config, joinNode *models.Node) (*Node, error) {
 type Node struct {
 	*models.Node
 	*models.UnimplementedChordServer
-	cnf *Config
+	Cnf *Config
 
 	predecessor *models.Node
 	predMtx     sync.RWMutex
@@ -216,9 +218,9 @@ type Node struct {
 	lastStablized time.Time
 }
 
-func (n *Node) HashKey(key []byte) ([]byte, error) {
-	h := n.cnf.Hash()
-	if _, err := h.Write(key); err != nil {
+func (n *Node) hashkey(key string) ([]byte, error) {
+	h := n.Cnf.Hash()
+	if _, err := h.Write([]byte(key)); err != nil {
 		return nil, err
 	}
 	val := h.Sum(nil)
@@ -287,25 +289,25 @@ func (n *Node) join(joinNode *models.Node) error {
 	Client本地调用
 */
 
-func (n *Node) Find(key []byte) (*models.Node, error) {
+func (n *Node) Find(key string) (*models.Node, error) {
 	return n.locate(key)
 }
 
-func (n *Node) Get(key []byte) ([]byte, error) {
+func (n *Node) Get(key string) ([]byte, error) {
 	return n.get(key)
 }
-func (n *Node) Set(key, value []byte) error {
+func (n *Node) Set(key string, value []byte) error {
 	return n.set(key, value)
 }
-func (n *Node) Delete(key []byte) error {
+func (n *Node) Delete(key string) error {
 	return n.delete(key)
 }
 
 /*
 	Finds the node for the key
 */
-func (n *Node) locate(key []byte) (*models.Node, error) {
-	id, err := n.HashKey(key)
+func (n *Node) locate(key string) (*models.Node, error) {
+	id, err := n.hashKey(key)
 	if err != nil {
 		return nil, err
 	}
@@ -313,7 +315,7 @@ func (n *Node) locate(key []byte) (*models.Node, error) {
 	return succ, err
 }
 
-func (n *Node) get(key []byte) ([]byte, error) {
+func (n *Node) get(key string) ([]byte, error) {
 	node, err := n.locate(key)
 	if err != nil {
 		return nil, err
@@ -325,7 +327,7 @@ func (n *Node) get(key []byte) ([]byte, error) {
 	return val.Value, nil
 }
 
-func (n *Node) set(key, value []byte) error {
+func (n *Node) set(key string, value []byte) error {
 	node, err := n.locate(key)
 	if err != nil {
 		return err
@@ -334,7 +336,7 @@ func (n *Node) set(key, value []byte) error {
 	return err
 }
 
-func (n *Node) delete(key []byte) error {
+func (n *Node) delete(key string) error {
 	node, err := n.locate(key)
 	if err != nil {
 		return err
@@ -409,7 +411,7 @@ func (n *Node) transferKeys(pred, succ *models.Node) {
 // 将fromnode到tonode的数据存到tonode上，并存本地删除这些数据
 func (n *Node) moveKeysFromLocal(fromNode, toNode *models.Node) {
 	fmt.Println("moveKeysFromLocal()...from, to ", fromNode.Addr, toNode.Addr)
-	keys, err := n.storage.Between(fromNode.Id, toNode.Id)
+	keys, err := n.Storage.Between(fromNode.Id, toNode.Id)
 	if len(keys) > 0 {
 		for _, item := range keys {
 			fmt.Println("transfering key: ", item.Key, err)
@@ -639,13 +641,13 @@ func (n *Node) notifyRPC(node, pred *models.Node) error {
 	return n.transport.Notify(node, pred)
 }
 
-func (n *Node) getKeyRPC(node *models.Node, key []byte) (*models.GetResponse, error) {
+func (n *Node) getKeyRPC(node *models.Node, key string) (*models.GetResponse, error) {
 	return n.transport.GetKey(node, key)
 }
-func (n *Node) setKeyRPC(node *models.Node, key, value []byte) error {
+func (n *Node) setKeyRPC(node *models.Node, key string, value []byte) error {
 	return n.transport.SetKey(node, key, value)
 }
-func (n *Node) deleteKeyRPC(node *models.Node, key []byte) error {
+func (n *Node) deleteKeyRPC(node *models.Node, key string) error {
 	return n.transport.DeleteKey(node, key)
 }
 

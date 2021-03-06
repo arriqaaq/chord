@@ -9,32 +9,29 @@ import (
 )
 
 type Storage interface {
-	Get([]byte) ([]byte, error)
-	Set([]byte, []byte) error
-	Delete([]byte) error
+	Get(string) ([]byte, error)
+	Set(string, string) error
+	Delete(string) error
 	Between([]byte, []byte) ([]*models.KV, error)
-	MDelete(...[]byte) error
+	MDelete(...string) error
 }
 
 func NewMapStore(hashFunc func() hash.Hash) Storage {
 	return &mapStore{
-		data: make(map[[]byte][]byte),
+		data: make(map[string]string),
 		Hash: hashFunc,
 	}
 }
 
-type key struct{
-	data []byte
-}
 // 存储key到数据的映射关系，和hash函数，即全部数据存储的数据结构
 type mapStore struct {
-	data map[[]byte][]byte
+	data map[string]string
 	Hash func() hash.Hash // Hash function to use
 
 }
 
 // 计算key的hash值
-func (a *mapStore) hashKey(key []byte) ([]byte, error) {
+func (a *mapStore) hashKey(key string) ([]byte, error) {
 	h := a.Hash()
 	if _, err := h.Write([]byte(key)); err != nil {
 		return nil, err
@@ -43,17 +40,8 @@ func (a *mapStore) hashKey(key []byte) ([]byte, error) {
 	return val, nil
 }
 
-func (a *mapStore) GetAll() ([]byte, error) {
-	for range
-	val, ok := a.data[key]
-	if !ok {
-		return nil, ERR_KEY_NOT_FOUND
-	}
-	return []byte(val), nil
-}
-
 // 返回存在的key的数据值
-func (a *mapStore) Get(key []byte) ([]byte, error) {
+func (a *mapStore) Get(key string) ([]byte, error) {
 	val, ok := a.data[key]
 	if !ok {
 		return nil, ERR_KEY_NOT_FOUND
@@ -62,13 +50,13 @@ func (a *mapStore) Get(key []byte) ([]byte, error) {
 }
 
 // 指定key对应的数据值
-func (a *mapStore) Set(key, value []byte) error {
+func (a *mapStore) Set(key, value string) error {
 	a.data[key] = value
 	return nil
 }
 
 // 从mapStore的data中删除键为key的映射记录
-func (a *mapStore) Delete(key []byte) error {
+func (a *mapStore) Delete(key string) error {
 	delete(a.data, key)
 	return nil
 }
@@ -101,7 +89,7 @@ func (a *mapStore) Between(from []byte, to []byte) ([]*models.KV, error) {
 
 // ...string：可变长度参数列表：[]string
 // 批量删除键值对
-func (a *mapStore) MDelete(keys ...[]byte) error {
+func (a *mapStore) MDelete(keys ...string) error {
 	for _, k := range keys {
 		delete(a.data, k)
 	}
