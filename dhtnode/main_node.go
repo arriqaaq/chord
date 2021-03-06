@@ -4,6 +4,7 @@ import (
 	"context"
 	"google.golang.org/grpc"
 	"time"
+	"unsafe"
 
 	"github.com/golang/protobuf/proto"
 
@@ -31,12 +32,15 @@ func (mainNode *MainNode) TransMsg(ctx context.Context, msg *bm.Msg) (*bm.Status
 	if err != nil {
 		log.Println("Marshal err: ", err)
 	}
-	key, err := mainNode.HashKey(val)
+	hahsVal, err := mainNode.hashValue(val)
 	if err != nil {
-		log.Println("Hashkey err: ", err)
+		log.Println("hashVal err: ", err)
 	}
-	//通过dht环转发到其他节点并存储在storage里面
-	err = mainNode.DhtNode.Set(key, val)
+
+	key := mainNode.byteToString(val)
+
+	//通过dht环转发到其他节点并存储在storage里面,并且放在同到Msgchan
+	err = mainNode.DhtNode.Set(key, hahsVal)
 	return emptyRequest, err
 }
 func (mainNode *MainNode) TransBlock(ctx context.Context, block *bm.Block) (*bm.StatusA, error) {
@@ -59,4 +63,17 @@ func (mainNode *MainNode) TransBlock(ctx context.Context, block *bm.Block) (*bm.
 // dht调用，orderer实现
 func (mainNode *MainNode) LoadConfig(context.Context, *bm.Status) (*bm.Config, error) {
 	return nil, nil
+}
+
+func (mainNode *MainNode) byteToString(b []byte) string {
+	return *(*string)(unsafe.Pointer(&b))
+}
+
+func (mainNode *MainNode) hashValue(val []byte) ([]byte, error) {
+	h := mainNode.Node.Cnf.Hash()
+	if _, err := h.Write(val); err != nil {
+		return nil, err
+	}
+	hashVal := h.Sum(nil)
+	return hashVal, nil
 }

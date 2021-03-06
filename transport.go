@@ -51,9 +51,9 @@ type Transport interface {
 	SetSuccessor(*models.Node, *models.Node) error
 
 	//Storage
-	GetKey(*models.Node, []byte) (*models.GetResponse, error)
-	SetKey(*models.Node, []byte, []byte) error
-	DeleteKey(*models.Node, []byte) error
+	GetKey(*models.Node, string) (*models.GetResponse, error)
+	SetKey(*models.Node, string, []byte) error
+	DeleteKey(*models.Node, string) error
 	RequestKeys(*models.Node, []byte, []byte) ([]*models.KV, error)
 	DeleteKeys(*models.Node, []string) error
 }
@@ -321,7 +321,7 @@ func (g *GrpcTransport) CheckPredecessor(node *models.Node) error {
 	return err
 }
 
-func (g *GrpcTransport) GetKey(node *models.Node, key []byte) (*models.GetResponse, error) {
+func (g *GrpcTransport) GetKey(node *models.Node, key string) (*models.GetResponse, error) {
 	client, err := g.getConn(node.Addr)
 	if err != nil {
 		return nil, err
@@ -344,7 +344,7 @@ func (g *GrpcTransport) SetKey(node *models.Node, key, value string) error {
 	return err
 }
 
-func (g *GrpcTransport) DeleteKey(node *models.Node, key []byte) error {
+func (g *GrpcTransport) DeleteKey(node *models.Node, key string) error {
 	client, err := g.getConn(node.Addr)
 	if err != nil {
 		return err
