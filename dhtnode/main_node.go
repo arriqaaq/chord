@@ -21,8 +21,11 @@ type MainNode struct {
 	sendBlockChan chan *bm.Block
 	bm.UnimplementedBlockTranserServer
 	bm.UnimplementedMsgTranserServer
+	*bm.Config
+
 	//*dhtnode.dht_node
 }
+
 
 // order To dht的处理
 func (mainNode *MainNode) TransMsg(ctx context.Context, msg *bm.Msg) (*bm.StatusA, error) {
@@ -39,6 +42,8 @@ func (mainNode *MainNode) TransMsg(ctx context.Context, msg *bm.Msg) (*bm.Status
 	err = mainNode.DhtNode.Set(key, val)
 	return emptyRequest, err
 }
+
+//接收其他节点的block，放到通道Blockchan中
 func (mainNode *MainNode) TransBlock(ctx context.Context, block *bm.Block) (*bm.StatusA, error) {
 	conn, err := grpc.Dial(OrdererAddress, grpc.WithInsecure(), grpc.WithBlock())
 	if err != nil {
@@ -55,6 +60,13 @@ func (mainNode *MainNode) TransBlock(ctx context.Context, block *bm.Block) (*bm.
 	}
 	return r, err
 }
+
+//TODO:需要有一个给区块标号的方法
+func FinalBlock(config *bm.Config, block *bm.Block) *bm.Block {
+	block.Header.Number = config.
+}
+
+
 
 // dht调用，orderer实现
 func (mainNode *MainNode) LoadConfig(context.Context, *bm.Status) (*bm.Config, error) {

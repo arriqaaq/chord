@@ -24,6 +24,7 @@ func createMainNode(id string, addr string) (*dhtnode.MainNode, error) {
 }
 
 func createNode(id string, addr string, sister *models.Node) (*dhtnode.DhtNode, error) {
+	cnf := chord.DefaultConfig()
 	node, err := chord.NewNode(cnf, joinNode)
 
 	cnf := chord.DefaultConfig()

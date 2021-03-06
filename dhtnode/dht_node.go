@@ -23,6 +23,9 @@ type DhtConfig struct {
 }
 
 type DhtNode struct {
+
+	bm.UnimplementedBlockTranserServer
+	bm.UnimplementedMsgTranserServer
 	sendMsgChan chan *message
 	exitChan chan struct{}
 	preBlock	preprocess
