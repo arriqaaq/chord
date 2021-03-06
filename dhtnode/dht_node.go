@@ -2,6 +2,7 @@ package dhtnode
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/zebra-uestc/chord"
 	bm "github.com/zebra-uestc/chord/dhtnode/bridge"
@@ -26,7 +27,6 @@ type DhtNode struct {
 
 	bm.UnimplementedBlockTranserServer
 	bm.UnimplementedMsgTranserServer
-	sendMsgChan chan *message
 	exitChan chan struct{}
 	preBlock	preprocess
 	*chord.Node
@@ -48,12 +48,19 @@ func NewDhtNode(cnf *chord.Config, joinNode *models.Node) (*DhtNode, error) {
 		return nil, err
 	}
 
+	txStore, ok:= dhtnode.Storage.(chord.TxStorage)
+	if !ok {
+		log.Fatal("Storage Error")
+		return nil, errors.New("Storage Error")
+	}
+	sendMsgChan := txStore.GetMsgChan()
+
 	go func() {
 		var timer <-chan time.Time
 		for {
 			select {
 
-			case msg := <-dhtnode.sendMsgChan:
+			case msg := <-sendMsgChan:
 				if node.Addr == MainNodeAddress {
 					adress = OrdererAddress
 				}

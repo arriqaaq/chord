@@ -179,7 +179,7 @@ func NewNode(Cnf *Config, joinNode *models.Node) (*Node, error) {
 		Node:       new(models.Node),
 		shutdownCh: make(chan struct{}),
 		Cnf:        Cnf,
-		Storage:    NewMapStore(Cnf.Hash),
+		Storage:    NewtxStorage(Cnf.Hash),
 	}
 	return node, nil
 }

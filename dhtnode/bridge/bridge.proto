@@ -7,22 +7,21 @@ import "common.proto";
 // node0(Server) <-> orderer(Client)
 service BlockTranser{
     // 由发送方调用函数，接收方实现函数
-    rpc TransBlock(Block) returns (StatusA){};
+    rpc TransBlock(Block) returns (ER){};
 }
 
 service MsgTranser{
-    rpc TransMsg(Msg) returns (StatusA){};
+    rpc TransMsg(Msg) returns (ER){};
     // dht调用，orderer实现
     rpc LoadConfig(StatusA) returns (Config){};
 }
 
-message StatusA{
-
+message ER{
 }
 
 message Config{
-
-    
+    Block lastBlock = 1;
+    String ordererAddr = 2;
 }
 
 //message Envelope{

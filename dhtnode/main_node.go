@@ -27,7 +27,6 @@ type MainNode struct {
 	//*dhtnode.dht_node
 }
 
-
 // order To dht的处理
 func (mainNode *MainNode) TransMsg(ctx context.Context, msg *bm.Msg) (*bm.StatusA, error) {
 
