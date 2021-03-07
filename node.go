@@ -809,11 +809,14 @@ func (n *Node) Stop() {
 	n.transport.Stop()
 }
 
-
-func (n *Node) GetConfig() *Config{
+func (n *Node) GetConfig() *Config {
 	return n.cnf
 }
 
-func (n *Node) GetStorage() Storage{
+func (n *Node) GetStorage() Storage {
 	return n.storage
+}
+
+func (n *Node) GetShutdownCh() chan struct{} {
+	return n.shutdownCh
 }

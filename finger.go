@@ -25,7 +25,7 @@ func newFingerTable(node *cm.Node, m int) fingerTable {
 
 // fingerEntry represents a single finger table entry
 type fingerEntry struct {
-	Id         []byte       // ID hash of (n + 2^i) mod (2^m)
+	Id         []byte   // ID hash of (n + 2^i) mod (2^m)
 	RemoteNode *cm.Node // RemoteNode that Start points to
 }
 
@@ -113,8 +113,8 @@ func (n *Node) fixFinger(next int) int {
 	// bInt := (&big.Int{}).SetBytes(finger.Node.Id)
 	// fmt.Printf("finger entry %d, %d,%d\n", next, aInt, bInt)
 	n.ftMtx.Unlock()
-
-	fmt.Println(n.FingerTableString())
+	//
+	//fmt.Println(n.FingerTableString())
 
 	return nextNum
 }

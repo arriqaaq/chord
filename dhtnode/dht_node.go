@@ -14,14 +14,10 @@ import (
 
 var (
 	emptyPrevHash = []byte{}
-	mainNodeAddress string
-	batchTimeout = time.Second
+	//TODO:传入主节点的addr
+	mainNodeAddress = "0.0.0.0:8001"
+	batchTimeout    = time.Second
 )
-
-//TODO:需要哪些配置
-type DhtConfig struct {
-	Addr string
-}
 
 type dhtNode struct {
 	bm.UnimplementedBlockTranserServer
@@ -33,8 +29,8 @@ type dhtNode struct {
 	mn mainNodeInside
 }
 
-func (dhtn *dhtNode) DhtInsideTransBlock(block *bm.Block) error{
-	if( dhtn.Addr != mainNodeAddress){
+func (dhtn *dhtNode) DhtInsideTransBlock(block *bm.Block) error {
+	if dhtn.Addr != mainNodeAddress {
 		conn, err := grpc.Dial(mainNodeAddress, grpc.WithInsecure(), grpc.WithBlock())
 		if err != nil {
 			log.Fatalf("did not connect: %v", err)
@@ -42,20 +38,19 @@ func (dhtn *dhtNode) DhtInsideTransBlock(block *bm.Block) error{
 		c := bm.NewBlockTranserClient(conn)
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
-		status, err := c.TransBlock(ctx, &bm.Block{Header: block.Header, Data: block.Data, Metadata: block.Metadata /*参数v*/})
-		status = status
+		_, err = c.TransBlock(ctx, &bm.Block{Header: block.Header, Data: block.Data, Metadata: block.Metadata /*参数v*/})
 		if err != nil {
 			log.Fatalf("could not transcation Block: %v", err)
 		}
 		return err
-	}else {
-		// TODO
-		// dhtn.mn
-		return nil
+	} else {
+		// 将生成的Block放到mainNode底下的Channel中
+		dhtn.mn.SendPrevBlockToChan(block)
+
 	}
+	return nil
 }
 
-//TODO:node的cnf和dhtNode的cnf还得分开
 func NewDhtNode(cnf *chord.Config, joinNode *cm.Node) (*dhtNode, error) {
 	node, err := chord.NewNode(cnf, joinNode)
 	dhtnode := &dhtNode{Node: node}
@@ -65,13 +60,13 @@ func NewDhtNode(cnf *chord.Config, joinNode *cm.Node) (*dhtNode, error) {
 		return nil, err
 	}
 
-	txStore, ok:= dhtnode.GetStorage().(chord.TxStorage)
+	txStore, ok := dhtnode.GetStorage().(chord.TxStorage)
 	if !ok {
 		log.Fatal("Storage Error")
 		return nil, errors.New("Storage Error")
 	}
 	sendMsgChan := txStore.GetMsgChan()
-
+	//生成prevBlock
 	go func() {
 		var timer <-chan time.Time
 		for {
@@ -83,7 +78,7 @@ func NewDhtNode(cnf *chord.Config, joinNode *cm.Node) (*dhtNode, error) {
 					//出块并发送给mainnode或者orderer
 					for _, batch := range batches {
 						block := dhtnode.preBlock.PreCreateNextBlock(batch)
-						//想把r去掉 = =
+						//将PreCreateNextBlock传给MainNode
 						err := dhtnode.DhtInsideTransBlock(block)
 						if err != nil {
 							log.Fatalf("could not transcation Block: %v", err)
@@ -134,8 +129,8 @@ func NewDhtNode(cnf *chord.Config, joinNode *cm.Node) (*dhtNode, error) {
 				if err != nil {
 					log.Fatalf("could not transcation Block: %v", err)
 				}
-			//TODO:退出机制
-			case <-dhtnode.exitChan:
+
+			case <-dhtnode.GetShutdownCh():
 				logger.Debugf("Exiting")
 				return
 			}
@@ -143,10 +138,3 @@ func NewDhtNode(cnf *chord.Config, joinNode *cm.Node) (*dhtNode, error) {
 	}()
 	return dhtnode, err
 }
-
-//func (dn *dntNode) TransMsg(ctx context.Context, msg *Msg) (*StatusA, error) {
-//	return nil, status.Errorf(codes.Unimplemented, "method TransMsg not implemented")
-//}
-//func (dn *dntNode) LoadConfig(ctx context.Context, status *StatusA) (*Config, error) {
-//	return nil, status.Errorf(codes.Unimplemented, "method LoadConfig not implemented")
-//}

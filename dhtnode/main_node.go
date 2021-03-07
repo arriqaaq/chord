@@ -1,9 +1,10 @@
 package dhtnode
 
 import (
-	"log"
 	"context"
 	"google.golang.org/grpc"
+	"log"
+	"net"
 	"time"
 
 	"github.com/golang/protobuf/proto"
@@ -14,31 +15,107 @@ import (
 
 var (
 	eMptyRequest   = &bm.DhtStatus{}
-	OrdererAddress = "3123123412"
+	OrdererAddress = "0.0.0.0:50222"
 )
 
-type MainNode interface{
-	AddNode(id string, addr string)error
+type MainNode interface {
+	AddNode(id string, addr string) error
+	Stop()
 }
 
-func NewMainNode(id string, addr string) (MainNode,error){
-	mainNodeAddress = addr
-	return &mainNode{}, nil
-}
-
-type mainNodeInside interface{
-	
-}
+type server struct{}
 
 type mainNode struct {
 	*dhtNode
+	prevBlockChan chan *bm.Block
 	sendBlockChan chan *bm.Block
 	bm.UnimplementedBlockTranserServer
 	bm.UnimplementedMsgTranserServer
-	*bm.Config
+	lastBlock *bm.Block
 }
 
-func (mn *mainNode) AddNode(id string, addr string) error{
+func NewMainNode(id string, addr string) (MainNode, error) {
+	mainNodeAddress = addr
+	nodeCnf := chord.DefaultConfig()
+	nodeCnf.Id = id
+	nodeCnf.Addr = addr
+	nodeCnf.Timeout = 10 * time.Millisecond
+	nodeCnf.MaxIdle = 100 * time.Millisecond
+	node, err := NewDhtNode(nodeCnf, nil)
+
+	mainNode := &mainNode{dhtNode: node}
+
+	//向orderer询问lastBlock
+	conn, err := grpc.Dial(OrdererAddress, grpc.WithInsecure(), grpc.WithBlock())
+	if err != nil {
+		log.Fatalf("did not connect: %v", err)
+	}
+	c := bm.NewBlockTranserClient(conn)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	r, err := c.LoadConfig(ctx, nil)
+	mainNode.lastBlock = r
+	if err != nil {
+		log.Fatalf("could not transcation Block: %v", err)
+	}
+
+	lis, err := net.Listen("tcp", addr)
+	if err != nil {
+		log.Fatal("failed to listen: %v", err)
+	}
+	s := grpc.NewServer()
+	bm.RegisterBlockTranserServer(s, mainNode)
+	if err := s.Serve(lis); err != nil {
+		log.Fatalf("fail to  serve: %v", err)
+	}
+
+	//给prevBlock编号
+	go func() {
+		ticker := time.NewTicker(1 * time.Second)
+		for {
+			select {
+			case prevBlock := <-mainNode.prevBlockChan:
+				mainNode.sendBlockChan <- mainNode.FinalBlock(mainNode.lastBlock, prevBlock)
+
+			case <-mainNode.GetShutdownCh():
+				ticker.Stop()
+			}
+		}
+	}()
+
+	//给orderer发Block
+	go func() {
+		ticker := time.NewTicker(1 * time.Second)
+		for {
+			select {
+			case finalBlock := <-mainNode.sendBlockChan:
+				conn, err := grpc.Dial(OrdererAddress, grpc.WithInsecure(), grpc.WithBlock())
+				if err != nil {
+					log.Fatalf("did not connect: %v", err)
+				}
+				c := bm.NewBlockTranserClient(conn)
+				ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+				defer cancel()
+				_, err = c.TransBlock(ctx, &bm.Block{Header: finalBlock.Header, Data: finalBlock.Data, Metadata: finalBlock.Metadata /*参数v*/})
+
+			case <-mainNode.GetShutdownCh():
+				ticker.Stop()
+			}
+		}
+	}()
+
+	return mainNode, err
+}
+
+type mainNodeInside interface {
+	SendPrevBlockToChan(*bm.Block)
+}
+
+func (mn *mainNode) SendPrevBlockToChan(block *bm.Block) {
+	mn.prevBlockChan <- block
+}
+
+func (mn *mainNode) AddNode(id string, addr string) error {
 	cnf := chord.DefaultConfig()
 	cnf.Id = id
 	cnf.Addr = addr
@@ -63,33 +140,17 @@ func (mn *mainNode) TransMsg(ctx context.Context, msg *bm.Msg) (*bm.DhtStatus, e
 	return nil, err
 }
 
-//接收其他节点的block，放到通道Blockchan中
+//接收其他节点的block
 func (mainNode *mainNode) TransBlock(ctx context.Context, block *bm.Block) (*bm.DhtStatus, error) {
-	conn, err := grpc.Dial(OrdererAddress, grpc.WithInsecure(), grpc.WithBlock())
-	if err != nil {
-		log.Fatalf("did not connect: %v", err)
-	}
-	defer conn.Close()
-	c := bm.NewBlockTranserClient(conn)
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	r, err := c.TransBlock(ctx, &bm.Block{ /*参数v*/ })
-	if err != nil {
-		log.Fatalf("could not greet: %v", err)
-	}
-	return r, err
-}
-
-//TODO:需要有一个给区块标号的方法
-func FinalBlock(config *bm.Config, block *bm.Block) *bm.Block {
-	// block.Header.Number = config.
-	return nil
-}
-
-// dht调用，orderer实现
-func (mainNode *mainNode) LoadConfig(context.Context, *bm.DhtStatus) (*bm.Config, error) {
+	mainNode.prevBlockChan <- block
 	return nil, nil
+}
+
+//给区块编号
+func (mainNode *mainNode) FinalBlock(lastBlock *bm.Block, block *bm.Block) *bm.Block {
+	block.Header.PreviousHash = lastBlock.Header.PreviousHash
+	block.Header.Number = lastBlock.Header.Number + 1
+	return block
 }
 
 func (mainNode *mainNode) hashValue(val []byte) ([]byte, error) {
@@ -99,4 +160,8 @@ func (mainNode *mainNode) hashValue(val []byte) ([]byte, error) {
 	}
 	hashVal := h.Sum(nil)
 	return hashVal, nil
+}
+
+func (mainNode *mainNode) Stop() {
+	close(mainNode.GetShutdownCh())
 }

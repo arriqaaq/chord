@@ -40,4 +40,5 @@ func main() {
 	signal.Notify(c, os.Interrupt)
 	<-time.After(10 * time.Second)
 	<-c
+	mainNode.Stop()
 }

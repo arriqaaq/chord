@@ -15,7 +15,6 @@ import (
 func createNode(id string, addr string, sister *cm.Node) (*chord.Node, error) {
 
 	cnf := chord.DefaultConfig()
-	fmt.Println(cnf.HashSize)
 	cnf.Id = id
 	cnf.Addr = addr
 	cnf.Timeout = 10 * time.Millisecond
