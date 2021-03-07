@@ -4,7 +4,7 @@ package bridge;
 
 option go_package = "github.com/zebra-uestc/chord/dhtnode/bridge";
 
-import "dhtnode/bridge/common.proto";
+import "common.proto";
 
 // node0(Server) <-> orderer(Client)
 service BlockTranser{

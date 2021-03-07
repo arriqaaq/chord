@@ -4,7 +4,6 @@ package bridge
 
 import (
 	context "context"
-	bridge "dhtnode/bridge"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -20,7 +19,7 @@ const _ = grpc.SupportPackageIsVersion7
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type BlockTranserClient interface {
 	// 由发送方调用函数，接收方实现函数
-	TransBlock(ctx context.Context, in *bridge.Block, opts ...grpc.CallOption) (*ER, error)
+	TransBlock(ctx context.Context, in *Block, opts ...grpc.CallOption) (*ER, error)
 }
 
 type blockTranserClient struct {
@@ -31,7 +30,7 @@ func NewBlockTranserClient(cc grpc.ClientConnInterface) BlockTranserClient {
 	return &blockTranserClient{cc}
 }
 
-func (c *blockTranserClient) TransBlock(ctx context.Context, in *bridge.Block, opts ...grpc.CallOption) (*ER, error) {
+func (c *blockTranserClient) TransBlock(ctx context.Context, in *Block, opts ...grpc.CallOption) (*ER, error) {
 	out := new(ER)
 	err := c.cc.Invoke(ctx, "/bridge.BlockTranser/TransBlock", in, out, opts...)
 	if err != nil {
@@ -45,7 +44,7 @@ func (c *blockTranserClient) TransBlock(ctx context.Context, in *bridge.Block, o
 // for forward compatibility
 type BlockTranserServer interface {
 	// 由发送方调用函数，接收方实现函数
-	TransBlock(context.Context, *bridge.Block) (*ER, error)
+	TransBlock(context.Context, *Block) (*ER, error)
 	mustEmbedUnimplementedBlockTranserServer()
 }
 
@@ -53,7 +52,7 @@ type BlockTranserServer interface {
 type UnimplementedBlockTranserServer struct {
 }
 
-func (UnimplementedBlockTranserServer) TransBlock(context.Context, *bridge.Block) (*ER, error) {
+func (UnimplementedBlockTranserServer) TransBlock(context.Context, *Block) (*ER, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method TransBlock not implemented")
 }
 func (UnimplementedBlockTranserServer) mustEmbedUnimplementedBlockTranserServer() {}
@@ -70,7 +69,7 @@ func RegisterBlockTranserServer(s grpc.ServiceRegistrar, srv BlockTranserServer)
 }
 
 func _BlockTranser_TransBlock_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(bridge.Block)
+	in := new(Block)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -82,7 +81,7 @@ func _BlockTranser_TransBlock_Handler(srv interface{}, ctx context.Context, dec 
 		FullMethod: "/bridge.BlockTranser/TransBlock",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(BlockTranserServer).TransBlock(ctx, req.(*bridge.Block))
+		return srv.(BlockTranserServer).TransBlock(ctx, req.(*Block))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -100,7 +99,7 @@ var BlockTranser_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "dhtnode/bridge/bridge.proto",
+	Metadata: "bridge.proto",
 }
 
 // MsgTranserClient is the client API for MsgTranser service.
@@ -224,5 +223,5 @@ var MsgTranser_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "dhtnode/bridge/bridge.proto",
+	Metadata: "bridge.proto",
 }

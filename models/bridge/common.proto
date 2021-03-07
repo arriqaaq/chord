@@ -6,6 +6,8 @@ syntax = "proto3";
 
 package bridge;
 
+option go_package = "github.com/zebra-uestc/chord/dhtnode/bridge";
+
 import "google/protobuf/timestamp.proto";
 
 // These status codes are intended to resemble selected HTTP status codes
