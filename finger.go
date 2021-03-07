@@ -5,14 +5,14 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/zebra-uestc/chord/models"
+	cm "github.com/zebra-uestc/chord/models/chord"
 )
 
 type fingerTable []*fingerEntry
 
 //m在默认cnf中为160
 //初始化时，每个fingeEntry对应的node都为输入的参数node
-func newFingerTable(node *models.Node, m int) fingerTable {
+func newFingerTable(node *cm.Node, m int) fingerTable {
 	//fingerTable一共有m个fingerEntry
 	ft := make([]*fingerEntry, m)
 	for i := range ft {
@@ -26,11 +26,11 @@ func newFingerTable(node *models.Node, m int) fingerTable {
 // fingerEntry represents a single finger table entry
 type fingerEntry struct {
 	Id         []byte       // ID hash of (n + 2^i) mod (2^m)
-	RemoteNode *models.Node // RemoteNode that Start points to
+	RemoteNode *cm.Node // RemoteNode that Start points to
 }
 
 // newFingerEntry returns an allocated new finger entry with the attributes set
-func newFingerEntry(id []byte, node *models.Node) *fingerEntry {
+func newFingerEntry(id []byte, node *cm.Node) *fingerEntry {
 	return &fingerEntry{
 		Id:         id,
 		RemoteNode: node,

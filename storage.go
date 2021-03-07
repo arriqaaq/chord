@@ -1,13 +1,11 @@
 package chord
 
-import (
-	"github.com/zebra-uestc/chord/models"
-)
+import cm "github.com/zebra-uestc/chord/models/chord"
 
 type Storage interface {
-	Get(string) ([]byte, error)
-	Set(string, []byte) error
-	Delete(string) error
-	Between([]byte, []byte) ([]*models.KV, error)
-	MDelete(...string) error
+	Get([]byte) ([]byte, error)
+	Set([]byte, []byte) error
+	Delete([]byte) error
+	Between([]byte, []byte) ([]*cm.KV, error)
+	MDelete(...[]byte) error
 }

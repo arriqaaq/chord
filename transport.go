@@ -8,18 +8,18 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/zebra-uestc/chord/models"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
+	cm "github.com/zebra-uestc/chord/models/chord"
 )
 
 var (
-	emptyNode                = &models.Node{}
-	emptyRequest             = &models.ER{}
-	emptyGetResponse         = &models.GetResponse{}
-	emptySetResponse         = &models.SetResponse{}
-	emptyDeleteResponse      = &models.DeleteResponse{}
-	emptyRequestKeysResponse = &models.RequestKeysResponse{}
+	emptyNode                = &cm.Node{}
+	emptyRequest             = &cm.ER{}
+	emptyGetResponse         = &cm.GetResponse{}
+	emptySetResponse         = &cm.SetResponse{}
+	emptyDeleteResponse      = &cm.DeleteResponse{}
+	emptyRequestKeysResponse = &cm.RequestKeysResponse{}
 )
 
 func Dial(addr string, opts ...grpc.DialOption) (*grpc.ClientConn, error) {
@@ -42,25 +42,25 @@ type Transport interface {
 	Stop() error
 
 	//RPC
-	GetSuccessor(*models.Node) (*models.Node, error)
-	FindSuccessor(*models.Node, []byte) (*models.Node, error)
-	GetPredecessor(*models.Node) (*models.Node, error)
-	Notify(*models.Node, *models.Node) error
-	CheckPredecessor(*models.Node) error
-	SetPredecessor(*models.Node, *models.Node) error
-	SetSuccessor(*models.Node, *models.Node) error
+	GetSuccessor(*cm.Node) (*cm.Node, error)
+	FindSuccessor(*cm.Node, []byte) (*cm.Node, error)
+	GetPredecessor(*cm.Node) (*cm.Node, error)
+	Notify(*cm.Node, *cm.Node) error
+	CheckPredecessor(*cm.Node) error
+	SetPredecessor(*cm.Node, *cm.Node) error
+	SetSuccessor(*cm.Node, *cm.Node) error
 
 	//Storage
-	GetKey(*models.Node, string) (*models.GetResponse, error)
-	SetKey(*models.Node, string, []byte) error
-	DeleteKey(*models.Node, string) error
-	RequestKeys(*models.Node, []byte, []byte) ([]*models.KV, error)
-	DeleteKeys(*models.Node, []string) error
+	GetKey(*cm.Node, []byte) (*cm.GetResponse, error)
+	SetKey(*cm.Node, []byte, []byte) error
+	DeleteKey(*cm.Node, []byte) error
+	RequestKeys(*cm.Node, []byte, []byte) ([]*cm.KV, error)
+	DeleteKeys(*cm.Node, [][]byte) error
 }
 
 type GrpcTransport struct {
 	config *Config
-	*models.UnimplementedChordServer
+	*cm.UnimplementedChordServer
 	timeout time.Duration
 	maxIdle time.Duration
 
@@ -74,7 +74,7 @@ type GrpcTransport struct {
 	shutdown int32
 }
 
-// func NewGrpcTransport(config *Config) (models.ChordClient, error) {
+// func NewGrpcTransport(config *Config) (cm.ChordClient, error) {
 func NewGrpcTransport(config *Config) (*GrpcTransport, error) {
 
 	addr := config.Addr
@@ -103,7 +103,7 @@ func NewGrpcTransport(config *Config) (*GrpcTransport, error) {
 
 type grpcConn struct {
 	addr       string
-	client     models.ChordClient
+	client     cm.ChordClient
 	conn       *grpc.ClientConn
 	lastActive time.Time
 }
@@ -114,7 +114,7 @@ func (g *grpcConn) Close() {
 
 // Registry(服务发现)：借助 JNDI 发布并调用了 RMI 服务。实际上，JNDI 就是一个注册表，服务端将服务对象放入到注册表中，客户端从注册表中获取服务对象。
 func (g *GrpcTransport) registerNode(node *Node) {
-	models.RegisterChordServer(g.server, node)
+	cm.RegisterChordServer(g.server, node)
 }
 
 func (g *GrpcTransport) GetServer() *grpc.Server {
@@ -124,7 +124,7 @@ func (g *GrpcTransport) GetServer() *grpc.Server {
 // Gets an outbound connection to a host
 func (g *GrpcTransport) getConn(
 	addr string,
-) (models.ChordClient, error) {
+) (cm.ChordClient, error) {
 
 	g.poolMtx.RLock()
 
@@ -146,7 +146,7 @@ func (g *GrpcTransport) getConn(
 		return nil, err
 	}
 
-	client := models.NewChordClient(conn)
+	client := cm.NewChordClient(conn)
 	cc = &grpcConn{addr, client, conn, time.Now()}
 	g.poolMtx.Lock()
 	if g.pool == nil {
@@ -236,7 +236,7 @@ func (g *GrpcTransport) listen() {
 }
 
 // GetSuccessor the successor ID of a remote node.
-func (g *GrpcTransport) GetSuccessor(node *models.Node) (*models.Node, error) {
+func (g *GrpcTransport) GetSuccessor(node *cm.Node) (*cm.Node, error) {
 	client, err := g.getConn(node.Addr)
 	if err != nil {
 		return nil, err
@@ -248,7 +248,7 @@ func (g *GrpcTransport) GetSuccessor(node *models.Node) (*models.Node, error) {
 }
 
 // FindSuccessor the successor ID of a remote node.
-func (g *GrpcTransport) FindSuccessor(node *models.Node, id []byte) (*models.Node, error) {
+func (g *GrpcTransport) FindSuccessor(node *cm.Node, id []byte) (*cm.Node, error) {
 	// fmt.Println("yo", node.Id, id)
 	client, err := g.getConn(node.Addr)
 	if err != nil {
@@ -257,11 +257,11 @@ func (g *GrpcTransport) FindSuccessor(node *models.Node, id []byte) (*models.Nod
 
 	ctx, cancel := context.WithTimeout(context.Background(), g.timeout)
 	defer cancel()
-	return client.FindSuccessor(ctx, &models.ID{Id: id})
+	return client.FindSuccessor(ctx, &cm.ID{Id: id})
 }
 
 // GetPredecessor the successor ID of a remote node.
-func (g *GrpcTransport) GetPredecessor(node *models.Node) (*models.Node, error) {
+func (g *GrpcTransport) GetPredecessor(node *cm.Node) (*cm.Node, error) {
 	client, err := g.getConn(node.Addr)
 	if err != nil {
 		return nil, err
@@ -272,7 +272,7 @@ func (g *GrpcTransport) GetPredecessor(node *models.Node) (*models.Node, error) 
 	return client.GetPredecessor(ctx, emptyRequest)
 }
 
-func (g *GrpcTransport) SetPredecessor(node *models.Node, pred *models.Node) error {
+func (g *GrpcTransport) SetPredecessor(node *cm.Node, pred *cm.Node) error {
 	client, err := g.getConn(node.Addr)
 	if err != nil {
 		return err
@@ -284,7 +284,7 @@ func (g *GrpcTransport) SetPredecessor(node *models.Node, pred *models.Node) err
 	return err
 }
 
-func (g *GrpcTransport) SetSuccessor(node *models.Node, succ *models.Node) error {
+func (g *GrpcTransport) SetSuccessor(node *cm.Node, succ *cm.Node) error {
 	client, err := g.getConn(node.Addr)
 	if err != nil {
 		return err
@@ -296,7 +296,7 @@ func (g *GrpcTransport) SetSuccessor(node *models.Node, succ *models.Node) error
 	return err
 }
 
-func (g *GrpcTransport) Notify(node, pred *models.Node) error {
+func (g *GrpcTransport) Notify(node, pred *cm.Node) error {
 	client, err := g.getConn(node.Addr)
 	if err != nil {
 		return err
@@ -309,7 +309,7 @@ func (g *GrpcTransport) Notify(node, pred *models.Node) error {
 
 }
 
-func (g *GrpcTransport) CheckPredecessor(node *models.Node) error {
+func (g *GrpcTransport) CheckPredecessor(node *cm.Node) error {
 	client, err := g.getConn(node.Addr)
 	if err != nil {
 		return err
@@ -317,11 +317,11 @@ func (g *GrpcTransport) CheckPredecessor(node *models.Node) error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), g.timeout)
 	defer cancel()
-	_, err = client.CheckPredecessor(ctx, &models.ID{Id: node.Id})
+	_, err = client.CheckPredecessor(ctx, &cm.ID{Id: node.Id})
 	return err
 }
 
-func (g *GrpcTransport) GetKey(node *models.Node, key string) (*models.GetResponse, error) {
+func (g *GrpcTransport) GetKey(node *cm.Node, key []byte) (*cm.GetResponse, error) {
 	client, err := g.getConn(node.Addr)
 	if err != nil {
 		return nil, err
@@ -329,10 +329,10 @@ func (g *GrpcTransport) GetKey(node *models.Node, key string) (*models.GetRespon
 
 	ctx, cancel := context.WithTimeout(context.Background(), g.timeout)
 	defer cancel()
-	return client.XGet(ctx, &models.GetRequest{Key: key})
+	return client.XGet(ctx, &cm.GetRequest{Key: key})
 }
 
-func (g *GrpcTransport) SetKey(node *models.Node, key, value string) error {
+func (g *GrpcTransport) SetKey(node *cm.Node, key, value []byte) error {
 	client, err := g.getConn(node.Addr)
 	if err != nil {
 		return err
@@ -340,11 +340,11 @@ func (g *GrpcTransport) SetKey(node *models.Node, key, value string) error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), g.timeout)
 	defer cancel()
-	_, err = client.XSet(ctx, &models.SetRequest{Key: key, Value: value})
+	_, err = client.XSet(ctx, &cm.SetRequest{Key: key, Value: value})
 	return err
 }
 
-func (g *GrpcTransport) DeleteKey(node *models.Node, key string) error {
+func (g *GrpcTransport) DeleteKey(node *cm.Node, key []byte) error {
 	client, err := g.getConn(node.Addr)
 	if err != nil {
 		return err
@@ -352,11 +352,11 @@ func (g *GrpcTransport) DeleteKey(node *models.Node, key string) error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), g.timeout)
 	defer cancel()
-	_, err = client.XDelete(ctx, &models.DeleteRequest{Key: key})
+	_, err = client.XDelete(ctx, &cm.DeleteRequest{Key: key})
 	return err
 }
 
-func (g *GrpcTransport) RequestKeys(node *models.Node, from, to []byte) ([]*models.KV, error) {
+func (g *GrpcTransport) RequestKeys(node *cm.Node, from, to []byte) ([]*cm.KV, error) {
 	client, err := g.getConn(node.Addr)
 	if err != nil {
 		return nil, err
@@ -365,7 +365,7 @@ func (g *GrpcTransport) RequestKeys(node *models.Node, from, to []byte) ([]*mode
 	ctx, cancel := context.WithTimeout(context.Background(), g.timeout)
 	defer cancel()
 	val, err := client.XRequestKeys(
-		ctx, &models.RequestKeysRequest{From: from, To: to},
+		ctx, &cm.RequestKeysRequest{From: from, To: to},
 	)
 	if err != nil {
 		return nil, err
@@ -373,7 +373,7 @@ func (g *GrpcTransport) RequestKeys(node *models.Node, from, to []byte) ([]*mode
 	return val.Values, nil
 }
 
-func (g *GrpcTransport) DeleteKeys(node *models.Node, keys []string) error {
+func (g *GrpcTransport) DeleteKeys(node *cm.Node, keys [][]byte) error {
 	client, err := g.getConn(node.Addr)
 	if err != nil {
 		return err
@@ -382,7 +382,7 @@ func (g *GrpcTransport) DeleteKeys(node *models.Node, keys []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), g.timeout)
 	defer cancel()
 	_, err = client.XMultiDelete(
-		ctx, &models.MultiDeleteRequest{Keys: keys},
+		ctx, &cm.MultiDeleteRequest{Keys: keys},
 	)
 	return err
 }

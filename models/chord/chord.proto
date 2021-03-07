@@ -55,7 +55,7 @@ message ID {
 
 
 message GetRequest {
-    string key = 1;
+    bytes key = 1;
 }
 
 message GetResponse {
@@ -63,22 +63,22 @@ message GetResponse {
 }
 
 message SetRequest {
-    string key = 1;
-    string value = 2;
+    bytes key = 1;
+    bytes value = 2;
 }
 
 message SetResponse {}
 
 
 message DeleteRequest {
-    string key = 1;
+    bytes key = 1;
 }
 
 message DeleteResponse {
 }
 
 message MultiDeleteRequest {
-    repeated string keys = 1;
+    repeated bytes keys = 1;
 }
 
 message RequestKeysRequest {
@@ -87,8 +87,8 @@ message RequestKeysRequest {
 }
 
 message KV {
-    string key = 1;
-    string value = 2;
+    bytes key = 1;
+    bytes value = 2;
 }
 
 message RequestKeysResponse {

@@ -3,18 +3,18 @@ package dhtnode
 import (
 	"context"
 	"errors"
-	"fmt"
-	"github.com/zebra-uestc/chord"
-	bm "github.com/zebra-uestc/chord/dhtnode/bridge"
-	"github.com/zebra-uestc/chord/models"
-	"google.golang.org/grpc"
 	"log"
 	"time"
+
+	"github.com/zebra-uestc/chord"
+	bm "github.com/zebra-uestc/chord/models/bridge"
+	cm "github.com/zebra-uestc/chord/models/chord"
+	"google.golang.org/grpc"
 )
 
 var (
 	emptyPrevHash = []byte{}
-	MainNodeAddress = "127.0.0.1:3433"
+	mainNodeAddress string
 	batchTimeout = time.Second
 )
 
@@ -23,32 +23,49 @@ type DhtConfig struct {
 	Addr string
 }
 
-type DhtNode struct {
-
+type dhtNode struct {
 	bm.UnimplementedBlockTranserServer
 	bm.UnimplementedMsgTranserServer
 	exitChan chan struct{}
-	preBlock	preprocess
+	preBlock preprocess
 	*chord.Node
-	//*bm.UnimplementedBridgeToOrderServer
-	//*bm.UnimplementedBridgeToDhtServer
-	//*dhtnode.dht_node
+
+	mn mainNodeInside
 }
 
+func (dhtn *dhtNode) DhtInsideTransBlock(block *bm.Block) error{
+	if( dhtn.Addr != mainNodeAddress){
+		conn, err := grpc.Dial(mainNodeAddress, grpc.WithInsecure(), grpc.WithBlock())
+		if err != nil {
+			log.Fatalf("did not connect: %v", err)
+		}
+		c := bm.NewBlockTranserClient(conn)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		status, err := c.TransBlock(ctx, &bm.Block{Header: block.Header, Data: block.Data, Metadata: block.Metadata /*参数v*/})
+		status = status
+		if err != nil {
+			log.Fatalf("could not transcation Block: %v", err)
+		}
+		return err
+	}else {
+		// TODO
+		// dhtn.mn
+		return nil
+	}
+}
 
 //TODO:node的cnf和dhtNode的cnf还得分开
-func NewDhtNode(cnf *chord.Config, joinNode *models.Node) (*DhtNode, error) {
+func NewDhtNode(cnf *chord.Config, joinNode *cm.Node) (*dhtNode, error) {
 	node, err := chord.NewNode(cnf, joinNode)
-	chord.InitNode((&DhtNode{Node: node}).Node)
-	adress := MainNodeAddress
-	dhtnode := &DhtNode{Node: node}
+	dhtnode := &dhtNode{Node: node}
 
 	if err != nil {
 		log.Println("transport start error:", err)
 		return nil, err
 	}
 
-	txStore, ok:= dhtnode.Storage.(chord.TxStorage)
+	txStore, ok:= dhtnode.GetStorage().(chord.TxStorage)
 	if !ok {
 		log.Fatal("Storage Error")
 		return nil, errors.New("Storage Error")
@@ -61,29 +78,13 @@ func NewDhtNode(cnf *chord.Config, joinNode *models.Node) (*DhtNode, error) {
 			select {
 
 			case msg := <-sendMsgChan:
-				if node.Addr == MainNodeAddress {
-					adress = OrdererAddress
-				}
-				if node.(*MainNode) != nil{
-					node.(*MainNode).
-				}
-				conn, err := grpc.Dial(adress, grpc.WithInsecure(), grpc.WithBlock())
-				if err != nil {
-					log.Fatalf("did not connect: %v", err)
-				}
-				c := bm.NewBlockTranserClient(conn)
-
-				ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-				defer cancel()
-
-				if msg.configMsg == nil {
-					batches, pending := dhtnode.preBlock.Ordered(msg.normalMsg)
+				if msg.ConfigMsg == nil {
+					batches, pending := dhtnode.preBlock.Ordered(msg.NormalMsg)
 					//出块并发送给mainnode或者orderer
 					for _, batch := range batches {
 						block := dhtnode.preBlock.PreCreateNextBlock(batch)
 						//想把r去掉 = =
-						r, err := c.TransBlock(ctx, &bm.Block{Header: block.Header, Data: block.Data, Metadata: block.Metadata /*参数v*/})
-						fmt.Println(r)
+						err := dhtnode.DhtInsideTransBlock(block)
 						if err != nil {
 							log.Fatalf("could not transcation Block: %v", err)
 						}
@@ -103,23 +104,17 @@ func NewDhtNode(cnf *chord.Config, joinNode *models.Node) (*DhtNode, error) {
 						// 1. Timer is already running and there are messages pending
 						// 2. Timer is not set and there are no messages pending
 					}
-
 				} else {
-
 					batch := dhtnode.preBlock.Cut()
 					if batch != nil {
 						block := dhtnode.preBlock.PreCreateNextBlock(batch)
-						r, err := c.TransBlock(ctx, &bm.Block{Header: block.Header, Data: block.Data, Metadata: block.Metadata /*参数v*/})
-						fmt.Println(r)
+						err := dhtnode.DhtInsideTransBlock(&bm.Block{Header: block.Header, Data: block.Data, Metadata: block.Metadata /*参数v*/})
 						if err != nil {
 							log.Fatalf("could not transcation Block: %v", err)
 						}
-
 					}
-
-					block := dhtnode.preBlock.PreCreateNextBlock([]*bm.Envelope{msg.configMsg})
-					r, err := c.TransBlock(ctx, &bm.Block{Header: block.Header, Data: block.Data, Metadata: block.Metadata /*参数v*/})
-					fmt.Println(r)
+					block := dhtnode.preBlock.PreCreateNextBlock([]*bm.Envelope{msg.ConfigMsg})
+					err := dhtnode.DhtInsideTransBlock(&bm.Block{Header: block.Header, Data: block.Data, Metadata: block.Metadata /*参数v*/})
 					if err != nil {
 						log.Fatalf("could not transcation Block: %v", err)
 					}
@@ -128,17 +123,6 @@ func NewDhtNode(cnf *chord.Config, joinNode *models.Node) (*DhtNode, error) {
 			case <-timer:
 				//clear the timer
 				timer = nil
-				if node.Addr == MainNodeAddress {
-					adress = OrdererAddress
-				}
-				conn, err := grpc.Dial(adress, grpc.WithInsecure(), grpc.WithBlock())
-				if err != nil {
-					log.Fatalf("did not connect: %v", err)
-				}
-				c := bm.NewBlockTranserClient(conn)
-
-				ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-				defer cancel()
 				batch := dhtnode.preBlock.Cut()
 				if len(batch) == 0 {
 					logger.Warningf("Batch timer expired with no pending requests, this might indicate a bug")
@@ -146,30 +130,23 @@ func NewDhtNode(cnf *chord.Config, joinNode *models.Node) (*DhtNode, error) {
 				}
 				logger.Debugf("Batch timer expired, creating block")
 				block := dhtnode.preBlock.PreCreateNextBlock(batch)
-				r, err := c.TransBlock(ctx, &bm.Block{Header: block.Header, Data: block.Data, Metadata: block.Metadata /*参数v*/})
-				fmt.Println(r)
+				err := dhtnode.DhtInsideTransBlock(&bm.Block{Header: block.Header, Data: block.Data, Metadata: block.Metadata /*参数v*/})
 				if err != nil {
 					log.Fatalf("could not transcation Block: %v", err)
 				}
-
 			//TODO:退出机制
 			case <-dhtnode.exitChan:
 				logger.Debugf("Exiting")
 				return
 			}
-
-}
+		}
 	}()
-
-	return &DhtNode{Node: node}, err
+	return dhtnode, err
 }
 
-
-
-//func (dn *DhtNode) TransMsg(ctx context.Context, msg *Msg) (*StatusA, error) {
+//func (dn *dntNode) TransMsg(ctx context.Context, msg *Msg) (*StatusA, error) {
 //	return nil, status.Errorf(codes.Unimplemented, "method TransMsg not implemented")
 //}
-//func (dn *DhtNode) LoadConfig(ctx context.Context, status *StatusA) (*Config, error) {
+//func (dn *dntNode) LoadConfig(ctx context.Context, status *StatusA) (*Config, error) {
 //	return nil, status.Errorf(codes.Unimplemented, "method LoadConfig not implemented")
 //}
-

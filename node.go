@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/zebra-uestc/chord/models"
+	cm "github.com/zebra-uestc/chord/models/chord"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 )
@@ -60,64 +60,65 @@ func (c *Config) Validate() error {
 }
 
 //新建单个节点
-func NewInode(id string, addr string) *models.Node {
+func NewInode(id string, addr string) *cm.Node {
 	h := sha1.New()
 	if _, err := h.Write([]byte(id)); err != nil {
 		return nil
 	}
 	val := h.Sum(nil)
 
-	return &models.Node{
+	return &cm.Node{
 		Id:   val,
 		Addr: addr,
 	}
 }
 
-/*
-	NewNode creates a new Chord node. Returns error if node already
-	exists in the chord ring
-*/
+//NewNode creates a new Chord node. Returns error if node alreadyexists in the chord ring
+func NewNode(cnf *Config, joinNode *cm.Node) (*Node, error) {
+	if err := cnf.Validate(); err != nil {
+		return nil, err
+	}
+	node := &Node{
+		Node:       new(cm.Node),
+		shutdownCh: make(chan struct{}),
+		cnf:        cnf,
+		storage:    NewtxStorage(cnf.Hash),
+	}
 
-// 已验证
-// 将单个节点(models.Node)按配置构造环上的节点(Node)，并加入chord环，启动该节点
-// 新加入的节点配置信息为cnf，joinNode为环上已join的父节点
-func InitNode(node *Node, joinNode *models.Node) error {
 	var nID string
-	if node.cnf.Id != "" {
-		nID = node.cnf.Id
+	if cnf.Id != "" {
+		nID = cnf.Id
 	} else {
-		nID = node.cnf.Addr
+		nID = cnf.Addr
 	}
 	id, err := node.hashKey([]byte(nID))
 	if err != nil {
-		return err
+		return nil, err
 	}
-	//func (z *Int) SetBytes(buf []byte) *Int 将20位byte数组转化为big int密钥形式
 	aInt := (&big.Int{}).SetBytes(id)
 
 	fmt.Printf("new node id %d, \n", aInt)
 
 	node.Node.Id = id
-	node.Node.Addr = node.Cnf.Addr
+	node.Node.Addr = cnf.Addr
 
 	// Populate finger table
-	node.fingerTable = newFingerTable(node.Node, node.Cnf.HashSize)
-	// node.fingerTable = newFingerTable(node.Node, 5)
-	// fmt.Println(node.FingerTableString())
+	node.fingerTable = newFingerTable(node.Node, cnf.HashSize)
 
 	// Start RPC server
-	transport, err := NewGrpcTransport(node.Cnf)
+	transport, err := NewGrpcTransport(cnf)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	models.RegisterChordServer(transport.server, node)
+	node.transport = transport
+
+	cm.RegisterChordServer(transport.server, node)
 
 	node.transport.Start()
 
-	// 根据joinNode的finger表更新新加入的节点的后继节点succ
 	if err := node.join(joinNode); err != nil {
-		return err
+		return nil, err
 	}
 
 	// Peridoically stabilize the node.
@@ -126,7 +127,6 @@ func InitNode(node *Node, joinNode *models.Node) error {
 		for {
 			select {
 			case <-ticker.C:
-				// fmt.Println("stabilize()...")
 				node.stabilize()
 			case <-node.shutdownCh:
 				ticker.Stop()
@@ -138,12 +138,10 @@ func InitNode(node *Node, joinNode *models.Node) error {
 	// Peridoically fix finger tables.
 	go func() {
 		next := 0
-		// ticker := time.NewTicker(100 * time.Millisecond)
-		ticker := time.NewTicker(1 * time.Second)
+		ticker := time.NewTicker(100 * time.Millisecond)
 		for {
 			select {
 			case <-ticker.C:
-				// fmt.Println("fixFinger()...")
 				next = node.fixFinger(next)
 			case <-node.shutdownCh:
 				ticker.Stop()
@@ -159,7 +157,6 @@ func InitNode(node *Node, joinNode *models.Node) error {
 		for {
 			select {
 			case <-ticker.C:
-				// fmt.Println("checkPredecessor()...")
 				node.checkPredecessor()
 			case <-node.shutdownCh:
 				ticker.Stop()
@@ -167,20 +164,7 @@ func InitNode(node *Node, joinNode *models.Node) error {
 			}
 		}
 	}()
-	return err
-}
 
-func NewNode(Cnf *Config, joinNode *models.Node) (*Node, error) {
-	if err := Cnf.Validate(); err != nil {
-		return nil, err
-	}
-	//node实例化
-	node := &Node{
-		Node:       new(models.Node),
-		shutdownCh: make(chan struct{}),
-		Cnf:        Cnf,
-		Storage:    NewtxStorage(Cnf.Hash),
-	}
 	return node, nil
 }
 
@@ -194,14 +178,14 @@ func NewNode(Cnf *Config, joinNode *models.Node) (*Node, error) {
 // }
 
 type Node struct {
-	*models.Node
-	*models.UnimplementedChordServer
-	Cnf *Config
+	*cm.Node
+	*cm.UnimplementedChordServer
+	cnf *Config
 
-	predecessor *models.Node
+	predecessor *cm.Node
 	predMtx     sync.RWMutex
 
-	successor *models.Node
+	successor *cm.Node
 	succMtx   sync.RWMutex
 
 	shutdownCh chan struct{}
@@ -209,7 +193,7 @@ type Node struct {
 	fingerTable fingerTable
 	ftMtx       sync.RWMutex
 
-	Storage Storage
+	storage Storage
 	stMtx   sync.RWMutex
 
 	transport Transport
@@ -218,9 +202,9 @@ type Node struct {
 	lastStablized time.Time
 }
 
-func (n *Node) hashkey(key string) ([]byte, error) {
-	h := n.Cnf.Hash()
-	if _, err := h.Write([]byte(key)); err != nil {
+func (n *Node) hashKey(key []byte) ([]byte, error) {
+	h := n.cnf.Hash()
+	if _, err := h.Write(key); err != nil {
 		return nil, err
 	}
 	val := h.Sum(nil)
@@ -229,12 +213,12 @@ func (n *Node) hashkey(key string) ([]byte, error) {
 
 // 已验证逻辑，并大修改
 //joinnode为已在环上的父节点，根据joinNode的信息将n加入环
-func (n *Node) join(joinNode *models.Node) error {
+func (n *Node) join(joinNode *cm.Node) error {
 	// First check if node already present in the circle
 	// Join this node to the same chord ring as parent
 	fmt.Println("join node...")
 	var err error
-	var succ *models.Node
+	var succ *cm.Node
 	// // Ask if our id already exists on the ring.
 	if joinNode != nil {
 		//根据n.Id,通过grpc，以joinnode为起点，(递归)找到n的正确successor节点
@@ -289,24 +273,24 @@ func (n *Node) join(joinNode *models.Node) error {
 	Client本地调用
 */
 
-func (n *Node) Find(key string) (*models.Node, error) {
+func (n *Node) Find(key []byte) (*cm.Node, error) {
 	return n.locate(key)
 }
 
-func (n *Node) Get(key string) ([]byte, error) {
+func (n *Node) Get(key []byte) ([]byte, error) {
 	return n.get(key)
 }
-func (n *Node) Set(key string, value []byte) error {
+func (n *Node) Set(key []byte, value []byte) error {
 	return n.set(key, value)
 }
-func (n *Node) Delete(key string) error {
+func (n *Node) Delete(key []byte) error {
 	return n.delete(key)
 }
 
 /*
 	Finds the node for the key
 */
-func (n *Node) locate(key string) (*models.Node, error) {
+func (n *Node) locate(key []byte) (*cm.Node, error) {
 	id, err := n.hashKey(key)
 	if err != nil {
 		return nil, err
@@ -315,7 +299,7 @@ func (n *Node) locate(key string) (*models.Node, error) {
 	return succ, err
 }
 
-func (n *Node) get(key string) ([]byte, error) {
+func (n *Node) get(key []byte) ([]byte, error) {
 	node, err := n.locate(key)
 	if err != nil {
 		return nil, err
@@ -327,7 +311,7 @@ func (n *Node) get(key string) ([]byte, error) {
 	return val.Value, nil
 }
 
-func (n *Node) set(key string, value []byte) error {
+func (n *Node) set(key []byte, value []byte) error {
 	node, err := n.locate(key)
 	if err != nil {
 		return err
@@ -336,7 +320,7 @@ func (n *Node) set(key string, value []byte) error {
 	return err
 }
 
-func (n *Node) delete(key string) error {
+func (n *Node) delete(key []byte) error {
 	node, err := n.locate(key)
 	if err != nil {
 		return err
@@ -349,7 +333,7 @@ func (n *Node) delete(key string) error {
 // 感觉transfer是增加节点时从succ节点转移数据用的
 // 从succ把pred到n之间的数据转移到n上
 //论文里面节点的退出归类为节点崩溃的一种。
-func (n *Node) transferKeys(pred, succ *models.Node) {
+func (n *Node) transferKeys(pred, succ *cm.Node) {
 	fmt.Println("transferKeys()...pred, succ ", pred.Addr, succ.Addr)
 	//修改为将(n.Id, pred.Id)之间的key从succ转移到n上
 	keys, err := n.requestKeys(pred, n.Node)
@@ -359,7 +343,7 @@ func (n *Node) transferKeys(pred, succ *models.Node) {
 		}
 
 	}
-	delKeyList := make([]string, 0, 10)
+	delKeyList := make([][]byte, 0, 10)
 	// store the keys in current node
 	for _, item := range keys {
 		if item == nil {
@@ -377,7 +361,7 @@ func (n *Node) transferKeys(pred, succ *models.Node) {
 	}
 }
 
-// func (n *Node) transferKeys(predpred, pred *models.Node) {
+// func (n *Node) transferKeys(predpred, pred *cm.Node) {
 // 	fmt.Println("transferKeys()...predpred, pred ", predpred.Addr, pred.Addr)
 // 	//修改为将(n.Id, pred.Id)之间的key从succ转移到n上
 // 	keys, err := n.storage.Between(predpred.Id, pred.Id)
@@ -409,16 +393,16 @@ func (n *Node) transferKeys(pred, succ *models.Node) {
 //已验证逻辑，并做修改
 // 实现Node删除时将Node上的所有数据转移给其successor
 // 将fromnode到tonode的数据存到tonode上，并存本地删除这些数据
-func (n *Node) moveKeysFromLocal(fromNode, toNode *models.Node) {
+func (n *Node) moveKeysFromLocal(fromNode, toNode *cm.Node) {
 	fmt.Println("moveKeysFromLocal()...from, to ", fromNode.Addr, toNode.Addr)
-	keys, err := n.Storage.Between(fromNode.Id, toNode.Id)
+	keys, err := n.storage.Between(fromNode.Id, toNode.Id)
 	if len(keys) > 0 {
 		for _, item := range keys {
 			fmt.Println("transfering key: ", item.Key, err)
 		}
 
 	}
-	delKeyList := make([]string, 0, 10)
+	delKeyList := make([][]byte, 0, 10)
 	// store the keys in  toNode
 	for _, item := range keys {
 		if item == nil {
@@ -438,13 +422,13 @@ func (n *Node) moveKeysFromLocal(fromNode, toNode *models.Node) {
 	}
 }
 
-func (n *Node) deleteKeys(node *models.Node, keys []string) error {
+func (n *Node) deleteKeys(node *cm.Node, keys [][]byte) error {
 	return n.deleteKeysRPC(node, keys)
 }
 
 // When a new node joins, it requests keys from it's successor
 // 返回pred到succ之间所有键值对
-func (n *Node) requestKeys(pred, succ *models.Node) ([]*models.KV, error) {
+func (n *Node) requestKeys(pred, succ *cm.Node) ([]*cm.KV, error) {
 
 	if isEqual(n.Id, succ.Id) {
 		return nil, nil
@@ -464,7 +448,7 @@ func (n *Node) requestKeys(pred, succ *models.Node) ([]*models.KV, error) {
 // 本函数以当前n为起点找hash为id的数据应当存放的节点，或某节点的下一个节点
 // id为fingerEntry的id，比如第i+1个fingerEntry：id为n + 2^i，找到对应的后继node，注意区分finger表的id和节点的id(本函数应该使用节点id)
 // 初始化时，succ = cur
-func (n *Node) findSuccessor(id []byte) (*models.Node, error) {
+func (n *Node) findSuccessor(id []byte) (*cm.Node, error) {
 	// Check if lock is needed throughout the process
 	n.succMtx.RLock()
 	defer n.succMtx.RUnlock()
@@ -523,7 +507,7 @@ func (n *Node) findSuccessor(id []byte) (*models.Node, error) {
 // 返回当前节点finger表中小于键值对hash值的最大id映射的节点(该节点可能是id即将映射的节点，也可能是当前节点的finger表中距离目标节点更近的节点)
 // 找到离id最接近的最大的节点，从后往前找
 // 论文里是直接把id跟finger表中节点的id比(而不是跟n+2^i比。。。)
-func (n *Node) closestPrecedingNode(id []byte) *models.Node {
+func (n *Node) closestPrecedingNode(id []byte) *cm.Node {
 	n.predMtx.RLock()
 	defer n.predMtx.RUnlock()
 
@@ -612,54 +596,50 @@ func (n *Node) checkPredecessor() {
 	只是对transport包中的rpc方法进行封装(Client端调用)
 */
 // getSuccessorRPC the successor ID of a remote node.
-func (n *Node) getSuccessorRPC(node *models.Node) (*models.Node, error) {
+func (n *Node) getSuccessorRPC(node *cm.Node) (*cm.Node, error) {
 	return n.transport.GetSuccessor(node)
 }
 
 // setSuccessorRPC sets the successor of a given node.
-func (n *Node) setSuccessorRPC(node *models.Node, succ *models.Node) error {
+func (n *Node) setSuccessorRPC(node *cm.Node, succ *cm.Node) error {
 	return n.transport.SetSuccessor(node, succ)
 }
 
 // findSuccessorRPC finds the successor node of a given ID in the entire ring.
-func (n *Node) findSuccessorRPC(node *models.Node, id []byte) (*models.Node, error) {
+func (n *Node) findSuccessorRPC(node *cm.Node, id []byte) (*cm.Node, error) {
 	return n.transport.FindSuccessor(node, id)
 }
 
 // getSuccessorRPC the successor ID of a remote node.
-func (n *Node) getPredecessorRPC(node *models.Node) (*models.Node, error) {
+func (n *Node) getPredecessorRPC(node *cm.Node) (*cm.Node, error) {
 	return n.transport.GetPredecessor(node)
 }
 
 // setPredecessorRPC sets the predecessor of a given node.
-func (n *Node) setPredecessorRPC(node *models.Node, pred *models.Node) error {
+func (n *Node) setPredecessorRPC(node *cm.Node, pred *cm.Node) error {
 	return n.transport.SetPredecessor(node, pred)
 }
 
 // notifyRPC notifies a remote node that pred is its predecessor.
-func (n *Node) notifyRPC(node, pred *models.Node) error {
+func (n *Node) notifyRPC(node, pred *cm.Node) error {
 	return n.transport.Notify(node, pred)
 }
 
-func (n *Node) getKeyRPC(node *models.Node, key string) (*models.GetResponse, error) {
+func (n *Node) getKeyRPC(node *cm.Node, key []byte) (*cm.GetResponse, error) {
 	return n.transport.GetKey(node, key)
 }
-func (n *Node) setKeyRPC(node *models.Node, key string, value []byte) error {
+func (n *Node) setKeyRPC(node *cm.Node, key []byte, value []byte) error {
 	return n.transport.SetKey(node, key, value)
 }
-func (n *Node) deleteKeyRPC(node *models.Node, key string) error {
+func (n *Node) deleteKeyRPC(node *cm.Node, key []byte) error {
 	return n.transport.DeleteKey(node, key)
 }
 
-func (n *Node) requestKeysRPC(
-	node *models.Node, from []byte, to []byte,
-) ([]*models.KV, error) {
+func (n *Node) requestKeysRPC(node *cm.Node, from []byte, to []byte) ([]*cm.KV, error) {
 	return n.transport.RequestKeys(node, from, to)
 }
 
-func (n *Node) deleteKeysRPC(
-	node *models.Node, keys []string,
-) error {
+func (n *Node) deleteKeysRPC(node *cm.Node, keys [][]byte) error {
 	return n.transport.DeleteKeys(node, keys)
 }
 
@@ -670,7 +650,7 @@ func (n *Node) deleteKeysRPC(
 
 // ctx context.Context上下文
 // GetSuccessor gets the successor on the node..
-func (n *Node) GetSuccessor(ctx context.Context, r *models.ER) (*models.Node, error) {
+func (n *Node) GetSuccessor(ctx context.Context, r *cm.ER) (*cm.Node, error) {
 	n.succMtx.RLock()
 	succ := n.successor
 	n.succMtx.RUnlock()
@@ -682,7 +662,7 @@ func (n *Node) GetSuccessor(ctx context.Context, r *models.ER) (*models.Node, er
 }
 
 // SetSuccessor sets the successor on the node..
-func (n *Node) SetSuccessor(ctx context.Context, succ *models.Node) (*models.ER, error) {
+func (n *Node) SetSuccessor(ctx context.Context, succ *cm.Node) (*cm.ER, error) {
 	n.succMtx.Lock()
 	n.successor = succ
 	n.succMtx.Unlock()
@@ -691,7 +671,7 @@ func (n *Node) SetSuccessor(ctx context.Context, succ *models.Node) (*models.ER,
 }
 
 // SetPredecessor sets the predecessor on the node..
-func (n *Node) SetPredecessor(ctx context.Context, pred *models.Node) (*models.ER, error) {
+func (n *Node) SetPredecessor(ctx context.Context, pred *cm.Node) (*cm.ER, error) {
 	n.predMtx.Lock()
 	n.predecessor = pred
 	n.predMtx.Unlock()
@@ -699,7 +679,7 @@ func (n *Node) SetPredecessor(ctx context.Context, pred *models.Node) (*models.E
 	return emptyRequest, nil
 }
 
-func (n *Node) FindSuccessor(ctx context.Context, id *models.ID) (*models.Node, error) {
+func (n *Node) FindSuccessor(ctx context.Context, id *cm.ID) (*cm.Node, error) {
 	succ, err := n.findSuccessor(id.Id)
 	if err != nil {
 		return nil, err
@@ -713,11 +693,11 @@ func (n *Node) FindSuccessor(ctx context.Context, id *models.ID) (*models.Node, 
 
 }
 
-func (n *Node) CheckPredecessor(ctx context.Context, id *models.ID) (*models.ER, error) {
+func (n *Node) CheckPredecessor(ctx context.Context, id *cm.ID) (*cm.ER, error) {
 	return emptyRequest, nil
 }
 
-func (n *Node) GetPredecessor(ctx context.Context, r *models.ER) (*models.Node, error) {
+func (n *Node) GetPredecessor(ctx context.Context, r *cm.ER) (*cm.Node, error) {
 	n.predMtx.RLock()
 	pred := n.predecessor
 	n.predMtx.RUnlock()
@@ -730,11 +710,11 @@ func (n *Node) GetPredecessor(ctx context.Context, r *models.ER) (*models.Node, 
 //已验证逻辑，transfer_Keys部分存疑
 // Notify notifies Chord that Node(Client) thinks it is our predecessor
 //Notify(n0): n0通知n它的存在，若此时n没有前序节点或，n0比n现有的前序节点更加靠近n，则n将其设置为前序节点。
-func (n *Node) Notify(ctx context.Context, node *models.Node) (*models.ER, error) {
+func (n *Node) Notify(ctx context.Context, node *cm.Node) (*cm.ER, error) {
 	n.predMtx.Lock()
 	defer n.predMtx.Unlock()
 	//prevPredNode记录的更新n.predecessor后，之前的n.predecessor
-	var prevPredNode *models.Node
+	var prevPredNode *cm.Node
 
 	pred := n.predecessor
 	//若此时n没有前序节点或
@@ -760,17 +740,17 @@ func (n *Node) Notify(ctx context.Context, node *models.Node) (*models.ER, error
 }
 
 // 获取key对应的数据
-func (n *Node) XGet(ctx context.Context, req *models.GetRequest) (*models.GetResponse, error) {
+func (n *Node) XGet(ctx context.Context, req *cm.GetRequest) (*cm.GetResponse, error) {
 	n.stMtx.RLock()
 	defer n.stMtx.RUnlock()
 	val, err := n.storage.Get(req.Key)
 	if err != nil {
 		return emptyGetResponse, err
 	}
-	return &models.GetResponse{Value: val}, nil
+	return &cm.GetResponse{Value: val}, nil
 }
 
-func (n *Node) XSet(ctx context.Context, req *models.SetRequest) (*models.SetResponse, error) {
+func (n *Node) XSet(ctx context.Context, req *cm.SetRequest) (*cm.SetResponse, error) {
 	n.stMtx.Lock()
 	defer n.stMtx.Unlock()
 	// fmt.Println("setting key on ", n.Node.Addr, req.Key, req.Value)
@@ -780,24 +760,24 @@ func (n *Node) XSet(ctx context.Context, req *models.SetRequest) (*models.SetRes
 	return emptySetResponse, err
 }
 
-func (n *Node) XDelete(ctx context.Context, req *models.DeleteRequest) (*models.DeleteResponse, error) {
+func (n *Node) XDelete(ctx context.Context, req *cm.DeleteRequest) (*cm.DeleteResponse, error) {
 	n.stMtx.Lock()
 	defer n.stMtx.Unlock()
 	err := n.storage.Delete(req.Key)
 	return emptyDeleteResponse, err
 }
 
-func (n *Node) XRequestKeys(ctx context.Context, req *models.RequestKeysRequest) (*models.RequestKeysResponse, error) {
+func (n *Node) XRequestKeys(ctx context.Context, req *cm.RequestKeysRequest) (*cm.RequestKeysResponse, error) {
 	n.stMtx.RLock()
 	defer n.stMtx.RUnlock()
 	val, err := n.storage.Between(req.From, req.To)
 	if err != nil {
 		return emptyRequestKeysResponse, err
 	}
-	return &models.RequestKeysResponse{Values: val}, nil
+	return &cm.RequestKeysResponse{Values: val}, nil
 }
 
-func (n *Node) XMultiDelete(ctx context.Context, req *models.MultiDeleteRequest) (*models.DeleteResponse, error) {
+func (n *Node) XMultiDelete(ctx context.Context, req *cm.MultiDeleteRequest) (*cm.DeleteResponse, error) {
 	n.stMtx.Lock()
 	defer n.stMtx.Unlock()
 	err := n.storage.MDelete(req.Keys...)
@@ -827,4 +807,13 @@ func (n *Node) Stop() {
 	}
 
 	n.transport.Stop()
+}
+
+
+func (n *Node) GetConfig() *Config{
+	return n.cnf
+}
+
+func (n *Node) GetStorage() Storage{
+	return n.storage
 }

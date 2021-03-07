@@ -9,20 +9,17 @@ import "common.proto";
 // node0(Server) <-> orderer(Client)
 service BlockTranser{
     // 由发送方调用函数，接收方实现函数
-    rpc TransBlock(Block) returns (ER){};
+    rpc TransBlock(Block) returns (DhtStatus){};
 }
 
 service MsgTranser{
-    rpc TransMsg(Msg) returns (ER){};
+    rpc TransMsg(Msg) returns (DhtStatus){};
     // dht调用，orderer实现
     rpc LoadConfig(DhtStatus) returns (Config){};
 }
 
 message DhtStatus{
 
-}
-
-message ER{
 }
 
 message Config{

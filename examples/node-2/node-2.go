@@ -10,10 +10,9 @@ import (
 	"time"
 
 	"github.com/zebra-uestc/chord"
-	"github.com/zebra-uestc/chord/models"
-)
+	cm "github.com/zebra-uestc/chord/models/chord")
 
-func createNode(id string, addr string, sister *models.Node) (*chord.Node, error) {
+func createNode(id string, addr string, sister *cm.Node) (*chord.Node, error) {
 
 	cnf := chord.DefaultConfig()
 	cnf.Id = id
@@ -52,7 +51,7 @@ func main() {
 				count++
 				key := strconv.Itoa(count)
 				value := fmt.Sprintf(`{"graph_id" : %d, "nodes" : ["node-%d","node-%d","node-%d"]}`, count, count+1, count+2, count+3)
-				sErr := h.Set(key, value)
+				sErr := h.Set([]byte(key), []byte(value))
 				if sErr != nil {
 					log.Println("err: ", sErr)
 				}

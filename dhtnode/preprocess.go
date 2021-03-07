@@ -3,7 +3,7 @@ package dhtnode
 import (
 	"bytes"
 	"crypto/sha256"
-	"github.com/zebra-uestc/chord/dhtnode/bridge"
+	"github.com/zebra-uestc/chord/models/bridge"
 	"time"
 
 	"github.com/hyperledger/fabric/common/channelconfig"

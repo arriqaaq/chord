@@ -2,9 +2,11 @@ package chord
 
 import (
 	"errors"
-	bm "github.com/zebra-uestc/chord/dhtnode/bridge"
-	"github.com/zebra-uestc/chord/models"
 	"hash"
+
+	bm "github.com/zebra-uestc/chord/models/bridge"
+	cm "github.com/zebra-uestc/chord/models/chord"
+	"google.golang.org/protobuf/proto"
 )
 
 var emptyMethodError = errors.New("Not Implemented Method")
@@ -22,8 +24,12 @@ type txStorage struct {
 	setMsgChan chan *bm.Msg
 }
 
-func (txs *txStorage) Set(key string, value []byte) error {
-	txs.setMsgChan <- value
+func (txs *txStorage) Set(key []byte, value []byte) error {
+	var msg *bm.Msg
+	if err := proto.Unmarshal(value, msg); err != nil{
+		return err
+	}
+	txs.setMsgChan <- msg
 	return nil
 }
 
@@ -31,15 +37,15 @@ func (txs *txStorage) GetMsgChan() chan *bm.Msg {
 	return txs.setMsgChan
 }
 
-func (*txStorage) Get(string) ([]byte, error) {
+func (*txStorage) Get([]byte) ([]byte, error) {
 	return nil, emptyMethodError
 }
-func (*txStorage) Delete(string) error {
+func (*txStorage) Delete([]byte) error {
 	return emptyMethodError
 }
-func (*txStorage) Between([]byte, []byte) ([]*models.KV, error) {
+func (*txStorage) Between([]byte, []byte) ([]*cm.KV, error) {
 	return nil, emptyMethodError
 }
-func (*txStorage) MDelete(...string) error {
+func (*txStorage) MDelete(...[]byte) error {
 	return emptyMethodError
 }
