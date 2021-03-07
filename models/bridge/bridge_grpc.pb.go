@@ -20,6 +20,7 @@ const _ = grpc.SupportPackageIsVersion7
 type BlockTranserClient interface {
 	// 由发送方调用函数，接收方实现函数
 	TransBlock(ctx context.Context, in *Block, opts ...grpc.CallOption) (*DhtStatus, error)
+	LoadConfig(ctx context.Context, in *DhtStatus, opts ...grpc.CallOption) (*Block, error)
 }
 
 type blockTranserClient struct {
@@ -39,12 +40,22 @@ func (c *blockTranserClient) TransBlock(ctx context.Context, in *Block, opts ...
 	return out, nil
 }
 
+func (c *blockTranserClient) LoadConfig(ctx context.Context, in *DhtStatus, opts ...grpc.CallOption) (*Block, error) {
+	out := new(Block)
+	err := c.cc.Invoke(ctx, "/bridge.BlockTranser/LoadConfig", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // BlockTranserServer is the server API for BlockTranser service.
 // All implementations must embed UnimplementedBlockTranserServer
 // for forward compatibility
 type BlockTranserServer interface {
 	// 由发送方调用函数，接收方实现函数
 	TransBlock(context.Context, *Block) (*DhtStatus, error)
+	LoadConfig(context.Context, *DhtStatus) (*Block, error)
 	mustEmbedUnimplementedBlockTranserServer()
 }
 
@@ -54,6 +65,9 @@ type UnimplementedBlockTranserServer struct {
 
 func (UnimplementedBlockTranserServer) TransBlock(context.Context, *Block) (*DhtStatus, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method TransBlock not implemented")
+}
+func (UnimplementedBlockTranserServer) LoadConfig(context.Context, *DhtStatus) (*Block, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method LoadConfig not implemented")
 }
 func (UnimplementedBlockTranserServer) mustEmbedUnimplementedBlockTranserServer() {}
 
@@ -86,6 +100,24 @@ func _BlockTranser_TransBlock_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _BlockTranser_LoadConfig_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DhtStatus)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BlockTranserServer).LoadConfig(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/bridge.BlockTranser/LoadConfig",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BlockTranserServer).LoadConfig(ctx, req.(*DhtStatus))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // BlockTranser_ServiceDesc is the grpc.ServiceDesc for BlockTranser service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -97,6 +129,10 @@ var BlockTranser_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "TransBlock",
 			Handler:    _BlockTranser_TransBlock_Handler,
 		},
+		{
+			MethodName: "LoadConfig",
+			Handler:    _BlockTranser_LoadConfig_Handler,
+		},
 	},
 	Streams:  []grpc.StreamDesc{},
 	Metadata: "bridge.proto",
@@ -107,8 +143,6 @@ var BlockTranser_ServiceDesc = grpc.ServiceDesc{
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type MsgTranserClient interface {
 	TransMsg(ctx context.Context, in *Msg, opts ...grpc.CallOption) (*DhtStatus, error)
-	// dht调用，orderer实现
-	LoadConfig(ctx context.Context, in *DhtStatus, opts ...grpc.CallOption) (*Config, error)
 }
 
 type msgTranserClient struct {
@@ -128,22 +162,11 @@ func (c *msgTranserClient) TransMsg(ctx context.Context, in *Msg, opts ...grpc.C
 	return out, nil
 }
 
-func (c *msgTranserClient) LoadConfig(ctx context.Context, in *DhtStatus, opts ...grpc.CallOption) (*Config, error) {
-	out := new(Config)
-	err := c.cc.Invoke(ctx, "/bridge.MsgTranser/LoadConfig", in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 // MsgTranserServer is the server API for MsgTranser service.
 // All implementations must embed UnimplementedMsgTranserServer
 // for forward compatibility
 type MsgTranserServer interface {
 	TransMsg(context.Context, *Msg) (*DhtStatus, error)
-	// dht调用，orderer实现
-	LoadConfig(context.Context, *DhtStatus) (*Config, error)
 	mustEmbedUnimplementedMsgTranserServer()
 }
 
@@ -153,9 +176,6 @@ type UnimplementedMsgTranserServer struct {
 
 func (UnimplementedMsgTranserServer) TransMsg(context.Context, *Msg) (*DhtStatus, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method TransMsg not implemented")
-}
-func (UnimplementedMsgTranserServer) LoadConfig(context.Context, *DhtStatus) (*Config, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method LoadConfig not implemented")
 }
 func (UnimplementedMsgTranserServer) mustEmbedUnimplementedMsgTranserServer() {}
 
@@ -188,24 +208,6 @@ func _MsgTranser_TransMsg_Handler(srv interface{}, ctx context.Context, dec func
 	return interceptor(ctx, in, info, handler)
 }
 
-func _MsgTranser_LoadConfig_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(DhtStatus)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(MsgTranserServer).LoadConfig(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/bridge.MsgTranser/LoadConfig",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(MsgTranserServer).LoadConfig(ctx, req.(*DhtStatus))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 // MsgTranser_ServiceDesc is the grpc.ServiceDesc for MsgTranser service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -216,10 +218,6 @@ var MsgTranser_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "TransMsg",
 			Handler:    _MsgTranser_TransMsg_Handler,
-		},
-		{
-			MethodName: "LoadConfig",
-			Handler:    _MsgTranser_LoadConfig_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

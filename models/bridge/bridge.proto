@@ -10,22 +10,18 @@ import "common.proto";
 service BlockTranser{
     // 由发送方调用函数，接收方实现函数
     rpc TransBlock(Block) returns (DhtStatus){};
+    rpc LoadConfig(DhtStatus) returns (Block){};
 }
 
 service MsgTranser{
     rpc TransMsg(Msg) returns (DhtStatus){};
-    // dht调用，orderer实现
-    rpc LoadConfig(DhtStatus) returns (Config){};
 }
 
 message DhtStatus{
 
 }
 
-message Config{
-    Block lastBlock = 1;
-    string ordererAddr = 2;
-}
+
 
 message Msg{
     uint64 configSeq=1;
