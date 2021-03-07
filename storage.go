@@ -1,7 +1,6 @@
 package chord
 
 import (
-	bm "github.com/zebra-uestc/chord/dhtnode/bridge"
 	"github.com/zebra-uestc/chord/models"
 )
 

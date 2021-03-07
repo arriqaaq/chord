@@ -1,4 +1,4 @@
-package server
+package main
 
 import (
 	"github.com/zebra-uestc/chord/dhtnode"
@@ -25,7 +25,7 @@ func createMainNode(id string, addr string) (*dhtnode.MainNode, error) {
 
 func createNode(id string, addr string, sister *models.Node) (*dhtnode.DhtNode, error) {
 	cnf := chord.DefaultConfig()
-	node, err := chord.NewNode(cnf, joinNode)
+	node, err := chord.NewNode(cnf, nil)
 
 	cnf := chord.DefaultConfig()
 	cnf.Id = id

@@ -1,8 +1,10 @@
 syntax = "proto3";
-// 部分struct{}数据结构待完善!!!
+
 package bridge;
 
-import "common.proto";
+option go_package = "github.com/zebra-uestc/chord/dhtnode/bridge";
+
+import "dhtnode/bridge/common.proto";
 
 // node0(Server) <-> orderer(Client)
 service BlockTranser{
@@ -13,7 +15,11 @@ service BlockTranser{
 service MsgTranser{
     rpc TransMsg(Msg) returns (ER){};
     // dht调用，orderer实现
-    rpc LoadConfig(StatusA) returns (Config){};
+    rpc LoadConfig(DhtStatus) returns (Config){};
+}
+
+message DhtStatus{
+
 }
 
 message ER{
@@ -21,40 +27,11 @@ message ER{
 
 message Config{
     Block lastBlock = 1;
-    String ordererAddr = 2;
+    string ordererAddr = 2;
 }
 
-//message Envelope{
-// // A marshaled Payload
-// bytes payload = 1;
-//
-// // A signature by the creator specified in the Payload header
-// bytes signature = 2;
-//}
-//
 message Msg{
     uint64 configSeq=1;
-	  Envelope normalMsg=2;
+	Envelope normalMsg=2;
     Envelope configMsg=3;
 }
-//
-//message BlockHeader{
-//    uint64 number = 1; // The position in the blockchain
-//    bytes previous_hash = 2; // The hash of the previous block header
-//    bytes data_hash = 3; // The hash of the BlockData, by MerkleTree
-//}
-//
-//message BlockData{
-//    repeated bytes data = 1;
-//}
-//
-//message BlockMetadata{
-//    repeated bytes metadata = 1;
-//}
-//
-//message Block{
-//    BlockHeader header = 1;
-//    BlockData data = 2;
-//    BlockMetadata metadata = 3;
-//}
-
