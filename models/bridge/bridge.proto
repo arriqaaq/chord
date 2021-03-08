@@ -26,8 +26,8 @@ message DhtStatus{
 }
 
 message Config{
-   bytes prevBlockHash
-   uint64 lastBlockNum
+   bytes prevBlockHash = 1;
+   uint64 lastBlockNum = 2;
 }
 
 

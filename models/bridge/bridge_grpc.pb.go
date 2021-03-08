@@ -18,9 +18,12 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type BlockTranserClient interface {
-	// 由发送方调用函数，接收方实现函数
+	// 由mainNode调用，将生成好的Block发送到orderer
+	//当dht内部节点传块时，mainNode实现，将收到的Block放到本地的prevBlockChan中
+	// 由orderer实现，将收到的Block放到本地的receiveChan中
 	TransBlock(ctx context.Context, in *Block, opts ...grpc.CallOption) (*DhtStatus, error)
-	LoadConfig(ctx context.Context, in *DhtStatus, opts ...grpc.CallOption) (*Block, error)
+	//由orderer实现，暂时还未实现
+	LoadConfig(ctx context.Context, in *DhtStatus, opts ...grpc.CallOption) (*Config, error)
 }
 
 type blockTranserClient struct {
@@ -40,8 +43,8 @@ func (c *blockTranserClient) TransBlock(ctx context.Context, in *Block, opts ...
 	return out, nil
 }
 
-func (c *blockTranserClient) LoadConfig(ctx context.Context, in *DhtStatus, opts ...grpc.CallOption) (*Block, error) {
-	out := new(Block)
+func (c *blockTranserClient) LoadConfig(ctx context.Context, in *DhtStatus, opts ...grpc.CallOption) (*Config, error) {
+	out := new(Config)
 	err := c.cc.Invoke(ctx, "/bridge.BlockTranser/LoadConfig", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -53,9 +56,12 @@ func (c *blockTranserClient) LoadConfig(ctx context.Context, in *DhtStatus, opts
 // All implementations must embed UnimplementedBlockTranserServer
 // for forward compatibility
 type BlockTranserServer interface {
-	// 由发送方调用函数，接收方实现函数
+	// 由mainNode调用，将生成好的Block发送到orderer
+	//当dht内部节点传块时，mainNode实现，将收到的Block放到本地的prevBlockChan中
+	// 由orderer实现，将收到的Block放到本地的receiveChan中
 	TransBlock(context.Context, *Block) (*DhtStatus, error)
-	LoadConfig(context.Context, *DhtStatus) (*Block, error)
+	//由orderer实现，暂时还未实现
+	LoadConfig(context.Context, *DhtStatus) (*Config, error)
 	mustEmbedUnimplementedBlockTranserServer()
 }
 
@@ -66,7 +72,7 @@ type UnimplementedBlockTranserServer struct {
 func (UnimplementedBlockTranserServer) TransBlock(context.Context, *Block) (*DhtStatus, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method TransBlock not implemented")
 }
-func (UnimplementedBlockTranserServer) LoadConfig(context.Context, *DhtStatus) (*Block, error) {
+func (UnimplementedBlockTranserServer) LoadConfig(context.Context, *DhtStatus) (*Config, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method LoadConfig not implemented")
 }
 func (UnimplementedBlockTranserServer) mustEmbedUnimplementedBlockTranserServer() {}
@@ -142,6 +148,7 @@ var BlockTranser_ServiceDesc = grpc.ServiceDesc{
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type MsgTranserClient interface {
+	//由mainNode实现，将从orderer收到的Msg通过Chord算法的Set操作转发给其他节点
 	TransMsg(ctx context.Context, in *Msg, opts ...grpc.CallOption) (*DhtStatus, error)
 }
 
@@ -166,6 +173,7 @@ func (c *msgTranserClient) TransMsg(ctx context.Context, in *Msg, opts ...grpc.C
 // All implementations must embed UnimplementedMsgTranserServer
 // for forward compatibility
 type MsgTranserServer interface {
+	//由mainNode实现，将从orderer收到的Msg通过Chord算法的Set操作转发给其他节点
 	TransMsg(context.Context, *Msg) (*DhtStatus, error)
 	mustEmbedUnimplementedMsgTranserServer()
 }
