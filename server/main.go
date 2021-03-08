@@ -20,7 +20,11 @@ var addresses = []string{
 }
 
 func main() {
-	mainNode, err := dhtnode.NewMainNode("0", addresses[0])
+	mainNode, err := dhtnode.NewMainNode()
+	mainNode.StartDht("0", addresses[0])
+	mainNode.StartTransBlockServer(addresses[1])
+	mainNode.StartTransMsgServer(addresses[2])
+
 	if err != nil {
 		log.Fatalln(err)
 	}

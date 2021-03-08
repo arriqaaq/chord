@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-var mainNodeAddress = "localhost:8001"
+var mainNodeAddress = "localhost:8003"
 
 type orderer struct {
 	*bm.UnimplementedBlockTranserServer
