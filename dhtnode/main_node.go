@@ -2,10 +2,11 @@ package dhtnode
 
 import (
 	"context"
-	"google.golang.org/grpc"
 	"log"
 	"net"
 	"time"
+
+	"google.golang.org/grpc"
 
 	"github.com/golang/protobuf/proto"
 
@@ -35,6 +36,25 @@ type mainNode struct {
 }
 
 func NewMainNode(id string, addr string) (MainNode, error) {
+	mainNode := &mainNode{}
+
+	// go func ()  {
+		println("mainnode addr: ",":8001")
+		println("start listen")
+		lis, err := net.Listen("tcp", ":8001")
+		println("listen get")
+		if err != nil {
+			log.Fatal("failed to listen: ", err)
+		}
+		s := grpc.NewServer()
+		bm.RegisterMsgTranserServer(s, mainNode)
+		println("start serve")
+		if err := s.Serve(lis); err != nil {
+			log.Fatal("fail to  serve:", err)
+		}
+		println("serve end")
+	// }()
+	
 	mainNodeAddress = addr
 	nodeCnf := chord.DefaultConfig()
 	nodeCnf.Id = id
@@ -42,32 +62,22 @@ func NewMainNode(id string, addr string) (MainNode, error) {
 	nodeCnf.Timeout = 10 * time.Millisecond
 	nodeCnf.MaxIdle = 100 * time.Millisecond
 	node, err := NewDhtNode(nodeCnf, nil)
+	mainNode.dhtNode= node
 
-	mainNode := &mainNode{dhtNode: node}
 
 	//向orderer询问lastBlock
-	conn, err := grpc.Dial(OrdererAddress, grpc.WithInsecure(), grpc.WithBlock())
-	if err != nil {
-		log.Fatalf("did not connect: %v", err)
-	}
-	c := bm.NewBlockTranserClient(conn)
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	r, err := c.LoadConfig(ctx, nil)
-	mainNode.lastBlock = r
-	if err != nil {
-		log.Fatalf("could not transcation Block: %v", err)
-	}
-
-	lis, err := net.Listen("tcp", addr)
-	if err != nil {
-		log.Fatal("failed to listen: %v", err)
-	}
-	s := grpc.NewServer()
-	bm.RegisterBlockTranserServer(s, mainNode)
-	if err := s.Serve(lis); err != nil {
-		log.Fatalf("fail to  serve: %v", err)
-	}
+	// conn, err := grpc.Dial(OrdererAddress, grpc.WithInsecure(), grpc.WithBlock())
+	// if err != nil {
+	// 	log.Fatalf("did not connect: %v", err)
+	// }
+	// c := bm.NewBlockTranserClient(conn)
+	// ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	// defer cancel()
+	// r, err := c.LoadConfig(ctx, nil)
+	// mainNode.lastBlock = r
+	// if err != nil {
+	// 	log.Fatalf("could not transcation Block: %v", err)
+	// }
 
 	//给prevBlock编号
 	go func() {
@@ -127,41 +137,19 @@ func (mn *mainNode) AddNode(id string, addr string) error {
 
 // order To dht的处理
 func (mn *mainNode) TransMsg(ctx context.Context, msg *bm.Msg) (*bm.DhtStatus, error) {
-	key, err := proto.Marshal(msg)
+	println("get msg")
+	_, err := proto.Marshal(msg)
 	if err != nil {
 		log.Println("Marshal err: ", err)
 	}
-	hashVal, err := mn.hashValue(key)
-	if err != nil {
-		log.Println("hashVal err: ", err)
-	}
-	//通过dht环转发到其他节点并存储在storage里面,并且放在同到Msgchan
-	err = mn.Set(key, hashVal)
+	// hashVal, err := mn.hashValue(key)
+	// if err != nil {
+	// 	log.Println("hashVal err: ", err)
+	// }
+	// //通过dht环转发到其他节点并存储在storage里面,并且放在同到Msgchan
+	// err = mn.Set(key, hashVal)
 	return nil, err
 }
 
 //接收其他节点的block
-func (mainNode *mainNode) TransBlock(ctx context.Context, block *bm.Block) (*bm.DhtStatus, error) {
-	mainNode.prevBlockChan <- block
-	return nil, nil
-}
-
-//给区块编号
-func (mainNode *mainNode) FinalBlock(lastBlock *bm.Block, block *bm.Block) *bm.Block {
-	block.Header.PreviousHash = lastBlock.Header.PreviousHash
-	block.Header.Number = lastBlock.Header.Number + 1
-	return block
-}
-
-func (mainNode *mainNode) hashValue(val []byte) ([]byte, error) {
-	h := mainNode.Node.GetConfig().Hash()
-	if _, err := h.Write(val); err != nil {
-		return nil, err
-	}
-	hashVal := h.Sum(nil)
-	return hashVal, nil
-}
-
-func (mainNode *mainNode) Stop() {
-	close(mainNode.GetShutdownCh())
-}
+12123

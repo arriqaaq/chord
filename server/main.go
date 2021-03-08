@@ -4,7 +4,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"strconv"
+	// "strconv"
 	"time"
 
 	"github.com/zebra-uestc/chord/dhtnode"
@@ -20,18 +20,24 @@ var addresses = []string{
 }
 
 func main() {
-	//根据主节点创建其他节点，构成哈希环
-	for index, address := range addresses {
-		var err error
-		if index == 0 {
-			mainNode, err = dhtnode.NewMainNode("0", address)
-		} else {
-			err = mainNode.AddNode(strconv.Itoa(index+1), address)
-		}
-		if err != nil {
-			log.Fatalln(err)
-		}
+	mainNode, err := dhtnode.NewMainNode("0", addresses[0])
+	if err != nil {
+		log.Fatalln(err)
 	}
+	//根据主节点创建其他节点，构成哈希环
+	// for index, address := range addresses {
+	// 	go func (index int,address string)  {
+	// 		var err error
+	// 		if index == 0 {
+	// 			mainNode, err = dhtnode.NewMainNode("0", address)
+	// 		} else {
+	// 			err = mainNode.AddNode(strconv.Itoa(index+1), address)
+	// 		}
+	// 		if err != nil {
+	// 			log.Fatalln(err)
+	// 		}
+	// 	}(index,address)
+	// }
 
 	// Set up channel on which to send signal notifications.
 	// We must use a buffered channel or risk missing the signal

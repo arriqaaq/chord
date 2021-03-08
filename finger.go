@@ -93,7 +93,7 @@ func (node *Node) FingerTableString() string {
 // next stores the index of the next finger to fix.
 //实时监听并更新fingerTable，next存储的是下一个需要更新的fingerEntry的index
 func (n *Node) fixFinger(next int) int {
-	fmt.Println("fixFinger()... ", next)
+	// fmt.Println("fixFinger()... ", next)
 	// nextHash := fingerID(n.Id, next, n.cnf.HashSize)
 	nextHash := fingerID(n.Id, next, n.cnf.HashSize)
 	succ, err := n.findSuccessor(nextHash)
