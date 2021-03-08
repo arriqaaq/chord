@@ -11,6 +11,10 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+/*
+PrevBlock生成类
+*/
+
 var logger = flogging.MustGetLogger("orderer.consensus.dht")
 
 type OrdererConfigFetcher interface {

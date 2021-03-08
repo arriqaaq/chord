@@ -8,12 +8,16 @@ import "common.proto";
 
 // node0(Server) <-> orderer(Client)
 service BlockTranser{
-    // 由发送方调用函数，接收方实现函数
+    // 由mainNode调用，将生成好的Block发送到orderer
+    //当dht内部节点传块时，mainNode实现，将收到的Block放到本地的prevBlockChan中
+    // 由orderer实现，将收到的Block放到本地的receiveChan中
     rpc TransBlock(Block) returns (DhtStatus){};
-    rpc LoadConfig(DhtStatus) returns (Block){};
+    //由orderer实现，暂时还未实现
+    rpc LoadConfig(DhtStatus) returns (Config){};
 }
 
 service MsgTranser{
+    //由mainNode实现，将从orderer收到的Msg通过Chord算法的Set操作转发给其他节点
     rpc TransMsg(Msg) returns (DhtStatus){};
 }
 
@@ -21,6 +25,10 @@ message DhtStatus{
 
 }
 
+message Config{
+   bytes prevBlockHash
+   uint64 lastBlockNum
+}
 
 
 message Msg{
