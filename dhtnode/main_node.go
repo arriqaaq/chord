@@ -89,7 +89,6 @@ func (mn *mainNode) startTransMsgServer(address string) {
 	println("MsgTranserServer serve end")
 }
 
-//保证先后顺序  startTansMsgServer先启动，startTransBlockServer后启动，且互不影响
 func (mn *mainNode) StartTransMsgServer(address string) {
 	go mn.startTransMsgServer(address)
 }
@@ -122,7 +121,6 @@ func (mn *mainNode) startTransBlockServer(address string) {
 				mn.lastBlockHash = BlockHeaderHash(newBlock.Header)
 				mn.blockNum++
 
-				//将区块通过TransBlock发给orderer
 			case finalBlock := <-mn.sendBlockChan:
 				conn, err := grpc.Dial(OrdererAddress, grpc.WithInsecure(), grpc.WithBlock())
 				if err != nil {
