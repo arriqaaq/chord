@@ -21,20 +21,35 @@ type OrdererConfigFetcher interface {
 	OrdererConfig() (channelconfig.Orderer, bool)
 }
 
-type message struct {
-	configSeq uint64
-	normalMsg *bridge.Envelope
-	configMsg *bridge.Envelope
-}
-
+//TODO: BatchSize定义（从orderer获得？还是自定义？）
 type preprocess struct {
 	sharedConfigFetcher   OrdererConfigFetcher
 	pendingBatch          []*bridge.Envelope
 	pendingBatchSizeBytes uint32
-
+	MaxMessageCount       uint32
+	AbsoluteMaxBytes      uint32
+	PreferredMaxBytes     uint32
 	PendingBatchStartTime time.Time
 	ChannelID             string
 	Metrics               *Metrics
+	batchSize             BatchSize
+}
+
+//type BatchSize struct {
+//	// Simply specified as number of messages for now, in the future
+//	// we may want to allow this to be specified by size in bytes
+//	MaxMessageCount uint32 = 500
+//	// The byte count of the serialized messages in a batch cannot
+//	// exceed this value.
+//	AbsoluteMaxBytes uint32 = 10 MB
+//	// The byte count of the serialized messages in a batch should not
+//	// exceed this value.
+//	PreferredMaxBytes    uint32   2 MB
+//
+//}
+
+func (pr *preprocess) load() {
+
 }
 
 // CreateNextBlock creates a new block with the next block number, and the given contents.

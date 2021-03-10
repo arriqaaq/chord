@@ -14,9 +14,9 @@ import (
 
 var (
 	emptyPrevHash = []byte{}
-	//TODO:传入主节点的addr
+	//TODO:传入主节点的addr,传入configtx.yaml文件中的batchTimeout
 	mainNodeAddress = "0.0.0.0:8001"
-	batchTimeout    = time.Second
+	batchTimeout    = 2 * time.Second
 )
 
 type dhtNode struct {

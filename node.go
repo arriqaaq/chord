@@ -105,7 +105,7 @@ func NewNode(cnf *Config, joinNode *cm.Node) (*Node, error) {
 	// Populate finger table
 	node.fingerTable = newFingerTable(node.Node, cnf.HashSize)
 
-	// Start RPC server
+	// Start RPC server	是否会阻塞在这儿？测试了一下不会
 	transport, err := NewGrpcTransport(cnf)
 	if err != nil {
 		return nil, err
@@ -116,6 +116,8 @@ func NewNode(cnf *Config, joinNode *cm.Node) (*Node, error) {
 	cm.RegisterChordServer(transport.server, node)
 
 	node.transport.Start()
+
+	//新增节点操作
 
 	if err := node.join(joinNode); err != nil {
 		return nil, err

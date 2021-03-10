@@ -11,7 +11,6 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/zebra-uestc/chord"
-	"github.com/zebra-uestc/chord/dhtnode/blockutils"
 	bm "github.com/zebra-uestc/chord/models/bridge"
 )
 
@@ -90,6 +89,7 @@ func (mn *mainNode) startTransMsgServer(address string) {
 	println("MsgTranserServer serve end")
 }
 
+//保证先后顺序  startTansMsgServer先启动，startTransBlockServer后启动，且互不影响
 func (mn *mainNode) StartTransMsgServer(address string) {
 	go mn.startTransMsgServer(address)
 }
@@ -119,9 +119,10 @@ func (mn *mainNode) startTransBlockServer(address string) {
 				//将新生成的块放到sendBlockChan转发给orderer
 				mn.sendBlockChan <- newBlock
 				//更新最后一个区块的哈希和区块个数
-				mn.lastBlockHash = blockutils.BlockHeaderHash(newBlock.Header)
+				mn.lastBlockHash = BlockHeaderHash(newBlock.Header)
 				mn.blockNum++
 
+				//将区块通过TransBlock发给orderer
 			case finalBlock := <-mn.sendBlockChan:
 				conn, err := grpc.Dial(OrdererAddress, grpc.WithInsecure(), grpc.WithBlock())
 				if err != nil {
