@@ -21,39 +21,36 @@ type OrdererConfigFetcher interface {
 	OrdererConfig() (channelconfig.Orderer, bool)
 }
 
-//TODO: BatchSize定义（从orderer获得？还是自定义？）
-type preprocess struct {
-	sharedConfigFetcher   OrdererConfigFetcher
-	pendingBatch          []*bridge.Envelope
-	pendingBatchSizeBytes uint32
-	MaxMessageCount       uint32
-	AbsoluteMaxBytes      uint32
-	PreferredMaxBytes     uint32
-	PendingBatchStartTime time.Time
-	ChannelID             string
-	Metrics               *Metrics
-	batchSize             BatchSize
+type DhtConfig struct {
+	// Simply specified as number of messages for now, in the future
+	// we may want to allow this to be specified by size in bytes
+	MaxMessageCount uint32
+	// The byte count of the serialized messages in a batch cannot
+	// exceed this value.
+	AbsoluteMaxBytes uint32
+	// The byte count of the serialized messages in a batch should not
+	// exceed this value.
+	PreferredMaxBytes uint32
+
+	MainNodeAddress string
+
+	BatchTimeout time.Duration
 }
 
-//type BatchSize struct {
-//	// Simply specified as number of messages for now, in the future
-//	// we may want to allow this to be specified by size in bytes
-//	MaxMessageCount uint32 = 500
-//	// The byte count of the serialized messages in a batch cannot
-//	// exceed this value.
-//	AbsoluteMaxBytes uint32 = 10 MB
-//	// The byte count of the serialized messages in a batch should not
-//	// exceed this value.
-//	PreferredMaxBytes    uint32   2 MB
-//
-//}
+func (dhtn *dhtNode) DefaultDhtConfig() *DhtConfig {
+	return &DhtConfig{MaxMessageCount: 500,
+		AbsoluteMaxBytes:  10 * 1024 * 1024,
+		PreferredMaxBytes: 2 * 1024 * 1024,
+		MainNodeAddress:   "0.0.0.0:8001",
+		BatchTimeout:      2 * time.Second}
+}
 
-func (pr *preprocess) load() {
+func (dhtn *dhtNode) load() {
 
 }
 
 // CreateNextBlock creates a new block with the next block number, and the given contents.
-func (pr *preprocess) PreCreateNextBlock(messages []*bridge.Envelope) *bridge.Block {
+func (dhtn *dhtNode) PreCreateNextBlock(messages []*bridge.Envelope) *bridge.Block {
 	// previousBlockHash := protoutil.BlockHeaderHash(bw.lastBlock.Header)
 
 	data := &bridge.BlockData{
@@ -114,26 +111,19 @@ func NewBlock(seqNum uint64, previousHash []byte) *bridge.Block {
 //   - impossible
 //
 // Note that messageBatches can not be greater than 2.
-func (pr *preprocess) Ordered(msg *bridge.Envelope) (messageBatches [][]*bridge.Envelope, pending bool) {
-	if len(pr.pendingBatch) == 0 {
+func (dhtn *dhtNode) Ordered(msg *bridge.Envelope) (messageBatches [][]*bridge.Envelope, pending bool) {
+	if len(dhtn.pendingBatch) == 0 {
 		// We are beginning a new batch, mark the time
-		pr.PendingBatchStartTime = time.Now()
+		dhtn.PendingBatchStartTime = time.Now()
 	}
-
-	ordererConfig, ok := pr.sharedConfigFetcher.OrdererConfig()
-	if !ok {
-		logger.Panicf("Could not retrieve orderer config to query batch parameters, block cutting is not possible")
-	}
-
-	batchSize := ordererConfig.BatchSize()
 
 	messageSizeBytes := messageSizeBytes(msg)
-	if messageSizeBytes > batchSize.PreferredMaxBytes {
-		logger.Debugf("The current message, with %v bytes, is larger than the preferred batch size of %v bytes and will be isolated.", messageSizeBytes, batchSize.PreferredMaxBytes)
+	if messageSizeBytes > dhtn.dhtConfig.PreferredMaxBytes {
+		logger.Debugf("The current message, with %v bytes, is larger than the preferred batch size of %v bytes and will be isolated.", messageSizeBytes, dhtn.dhtConfig.PreferredMaxBytes)
 
 		// cut pending batch, if it has any messages
-		if len(pr.pendingBatch) > 0 {
-			messageBatch := pr.Cut()
+		if len(dhtn.pendingBatch) > 0 {
+			messageBatch := dhtn.Cut()
 			messageBatches = append(messageBatches, messageBatch)
 		}
 
@@ -141,29 +131,29 @@ func (pr *preprocess) Ordered(msg *bridge.Envelope) (messageBatches [][]*bridge.
 		messageBatches = append(messageBatches, []*bridge.Envelope{msg})
 
 		// Record that this batch took no time to fill
-		pr.Metrics.BlockFillDuration.With("channel", pr.ChannelID).Observe(0)
+		dhtn.Metrics.BlockFillDuration.With("channel", dhtn.ChannelID).Observe(0)
 
 		return
 	}
 
-	messageWillOverflowBatchSizeBytes := pr.pendingBatchSizeBytes+messageSizeBytes > batchSize.PreferredMaxBytes
+	messageWillOverflowBatchSizeBytes := dhtn.pendingBatchSizeBytes+messageSizeBytes > dhtn.dhtConfig.PreferredMaxBytes
 
 	if messageWillOverflowBatchSizeBytes {
-		logger.Debugf("The current message, with %v bytes, will overflow the pending batch of %v bytes.", messageSizeBytes, pr.pendingBatchSizeBytes)
+		logger.Debugf("The current message, with %v bytes, will overflow the pending batch of %v bytes.", messageSizeBytes, dhtn.pendingBatchSizeBytes)
 		logger.Debugf("Pending batch would overflow if current message is added, cutting batch now.")
-		messageBatch := pr.Cut()
-		pr.PendingBatchStartTime = time.Now()
+		messageBatch := dhtn.Cut()
+		dhtn.PendingBatchStartTime = time.Now()
 		messageBatches = append(messageBatches, messageBatch)
 	}
 
 	logger.Debugf("Enqueuing message into batch")
-	pr.pendingBatch = append(pr.pendingBatch, msg)
-	pr.pendingBatchSizeBytes += messageSizeBytes
+	dhtn.pendingBatch = append(dhtn.pendingBatch, msg)
+	dhtn.pendingBatchSizeBytes += messageSizeBytes
 	pending = true
 
-	if uint32(len(pr.pendingBatch)) >= batchSize.MaxMessageCount {
+	if uint32(len(dhtn.pendingBatch)) >= dhtn.dhtConfig.MaxMessageCount {
 		logger.Debugf("Batch size met, cutting batch")
-		messageBatch := pr.Cut()
+		messageBatch := dhtn.Cut()
 		messageBatches = append(messageBatches, messageBatch)
 		pending = false
 	}
@@ -172,14 +162,14 @@ func (pr *preprocess) Ordered(msg *bridge.Envelope) (messageBatches [][]*bridge.
 }
 
 // Cut returns the current batch and starts a new one
-func (pr *preprocess) Cut() []*bridge.Envelope {
-	if pr.pendingBatch != nil {
-		pr.Metrics.BlockFillDuration.With("channel", pr.ChannelID).Observe(time.Since(pr.PendingBatchStartTime).Seconds())
+func (dhtn *dhtNode) Cut() []*bridge.Envelope {
+	if dhtn.pendingBatch != nil {
+		dhtn.Metrics.BlockFillDuration.With("channel", dhtn.ChannelID).Observe(time.Since(dhtn.PendingBatchStartTime).Seconds())
 	}
-	pr.PendingBatchStartTime = time.Time{}
-	batch := pr.pendingBatch
-	pr.pendingBatch = nil
-	pr.pendingBatchSizeBytes = 0
+	dhtn.PendingBatchStartTime = time.Time{}
+	batch := dhtn.pendingBatch
+	dhtn.pendingBatch = nil
+	dhtn.pendingBatchSizeBytes = 0
 	return batch
 }
 

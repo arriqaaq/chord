@@ -96,6 +96,7 @@ func (n *Node) fixFinger(next int) int {
 	// fmt.Println("fixFinger()... ", next)
 	// nextHash := fingerID(n.Id, next, n.cnf.HashSize)
 	nextHash := fingerID(n.Id, next, n.cnf.HashSize)
+	//记录当前的后继节点
 	succ, err := n.findSuccessor(nextHash)
 	// nextNum := (next + 1) % n.cnf.HashSize
 	nextNum := (next + 1) % n.cnf.HashSize
@@ -107,6 +108,7 @@ func (n *Node) fixFinger(next int) int {
 	}
 	finger := newFingerEntry(nextHash, succ)
 	n.ftMtx.Lock()
+	//更新finger表
 	n.fingerTable[next] = finger
 
 	// aInt := (&big.Int{}).SetBytes(nextHash)
